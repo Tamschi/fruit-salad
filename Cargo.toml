@@ -1,3 +1,9 @@
+[workspace]
+members = [
+	".",
+	"proc-macro-definitions",
+]
+
 [package]
 name = "fruit-salad"
 version = "0.0.1"
@@ -28,6 +34,13 @@ publish = false
 is-it-maintained-issue-resolution = { repository = "Tamschi/fruit-salad" }
 is-it-maintained-open-issues = { repository = "Tamschi/fruit-salad" }
 maintenance = { status = "experimental" } # This may differ between branches.
+
+[features]
+default = ["std"]
+std = []
+
+[dependencies]
+fruit-salad_proc-macro-definitions = { version = "0.0.1", path = "proc-macro-definitions", optional = true }
 
 [dev-dependencies]
 cargo-husky = "1.5.0"

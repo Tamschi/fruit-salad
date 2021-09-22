@@ -1,0 +1,30 @@
+[package]
+name = "fruit-salad_proc-macro-definitions"
+version = "0.0.1"
+authors = ["Tamme Schichler <tamme@schichler.dev>"]
+edition = "2018"
+description = "Procedural macro definitions for fruit-salad."
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/Tamschi/fruit-salad"
+homepage = "https://github.com/Tamschi/fruit-salad"
+documentation = "https://docs.rs/fruit-salad_proc-macro-definitions/0.0.1"
+keywords = []
+categories = []
+publish = false
+
+[lib]
+proc-macro = true
+
+[dependencies]
+call2-for-syn = "2.0.3"
+debugless-unwrap = "0.0.4"
+lazy_static = "1.4.0"
+proc-macro-crate = "1.0.0"
+proc-macro2 = "1.0.29"
+quote = "1.0.2"
+syn-mid = "0.5.0"
+syn = { version = "1.0.76", features = ["full", "visit-mut"] }
+tap = "1.0.1"
+
+[dev-dependencies]
+version-sync = "0.9.1"
