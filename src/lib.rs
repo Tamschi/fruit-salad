@@ -303,7 +303,6 @@ impl Eq for dyn DyncastEq {}
 //TODO: Other traits
 pub trait DyncastOrd: DyncastEq {
 	fn as_dyncast_eq(&self) -> &dyn DyncastEq;
-	fn cmp(&self, other: &dyn Dyncast) -> Ordering;
 }
 impl<'a> Deref for dyn 'a + DyncastOrd {
 	type Target = dyn 'a + DyncastEq;
@@ -326,7 +325,7 @@ impl<'a> PartialOrd for dyn 'a + DyncastOrd {
 		.partial_cmp(other)
 	}
 }
-impl Ord for dyn DyncastOrd {
+impl<'a> Ord for dyn 'a + DyncastOrd {
 	fn cmp(&self, other: &Self) -> Ordering {
 		self.dyncast::<dyn DynOrd>()
 		.expect("Expected `Self` to be *dynamically* `dyn PartialOrd<dyn Dyncast>` via `dyn DyncastOrd: PartialOrd`")
