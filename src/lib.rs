@@ -93,14 +93,15 @@ impl<'a> dyn 'a + Dyncast {
 			})
 	}
 
+	/// # Safety
+	///
+	/// See [`NonNull::as_ref`].
 	#[allow(missing_docs)]
 	#[must_use]
-	pub fn dyncast_ptr<T: 'static + ?Sized>(&self) -> Option<NonNull<T>> {
-		self.__dyncast(
-			unsafe { NonNull::new_unchecked(self as *const Self as *mut Self) }.cast(),
-			TypeId::of::<T>(),
-		)
-		.map(|pointer_data| unsafe { pointer_data.as_ptr().cast::<NonNull<T>>().read_unaligned() })
+	pub unsafe fn dyncast_ptr<T: 'static + ?Sized>(this: NonNull<Self>) -> Option<NonNull<T>> {
+		this.as_ref()
+			.__dyncast(this.cast(), TypeId::of::<T>())
+			.map(|pointer_data| pointer_data.as_ptr().cast::<NonNull<T>>().read_unaligned())
 	}
 }
 
@@ -202,36 +203,36 @@ impl Display for dyn Dyncast {
 
 impl<'a> PartialEq for dyn 'a + Dyncast {
 	fn eq(&self, other: &Self) -> bool {
-		if let Some(this) = self.dyncast_ptr::<dyn PartialEq<dyn Dyncast>>() {
-			unsafe {
+		unsafe {
+			if let Some(this) = Self::dyncast_ptr::<dyn PartialEq<dyn Dyncast>>(self.into()) {
 				let other = mem::transmute(other);
 				this.as_ref().eq(other)
-			}
-		} else if let Some(other) = other.dyncast_ptr::<dyn PartialEq<dyn Dyncast>>() {
-			unsafe {
+			} else if let Some(other) =
+				Self::dyncast_ptr::<dyn PartialEq<dyn Dyncast>>(other.into())
+			{
 				let this = mem::transmute(self);
 				other.as_ref().eq(this)
+			} else {
+				false
 			}
-		} else {
-			false
 		}
 	}
 }
 
 impl<'a> PartialOrd for dyn 'a + Dyncast {
 	fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-		if let Some(this) = self.dyncast_ptr::<dyn PartialOrd<dyn Dyncast>>() {
-			unsafe {
+		unsafe {
+			if let Some(this) = Self::dyncast_ptr::<dyn PartialOrd<dyn Dyncast>>(self.into()) {
 				let other = mem::transmute(other);
 				this.as_ref().partial_cmp(other)
-			}
-		} else if let Some(other) = other.dyncast_ptr::<dyn PartialOrd<dyn Dyncast>>() {
-			unsafe {
+			} else if let Some(other) =
+				Self::dyncast_ptr::<dyn PartialOrd<dyn Dyncast>>(other.into())
+			{
 				let this = mem::transmute(self);
 				other.as_ref().partial_cmp(this).map(Ordering::reverse)
+			} else {
+				None
 			}
-		} else {
-			None
 		}
 	}
 }
