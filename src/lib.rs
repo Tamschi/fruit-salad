@@ -19,7 +19,7 @@ use core::{
 };
 
 #[cfg(feature = "macros")]
-pub use rhizome_proc_macro_definitions::{implement_dyncasts, Dyncast};
+pub use fruit_salad_proc_macro_definitions::{implement_dyncasts, Dyncast};
 
 impl dyn Dyncast {
 	#[allow(missing_docs)]
@@ -254,3 +254,9 @@ impl Hash for dyn Dyncast {
 // 		Self::cmp(self, other)
 // 	}
 // }
+
+#[doc(hidden)]
+pub mod __ {
+	#[cfg(feature = "macros")]
+	pub use static_assertions::const_assert;
+}

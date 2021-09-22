@@ -37,10 +37,12 @@ maintenance = { status = "experimental" } # This may differ between branches.
 
 [features]
 default = ["std"]
+macros = ["fruit-salad_proc-macro-definitions"]
 std = []
 
 [dependencies]
 fruit-salad_proc-macro-definitions = { version = "0.0.1", path = "proc-macro-definitions", optional = true }
+static_assertions = { version = "1.1.0", optional = true }
 
 [dev-dependencies]
 cargo-husky = "1.5.0"

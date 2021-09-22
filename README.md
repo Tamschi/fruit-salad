@@ -33,7 +33,7 @@ this crate also works very well in combination with [`pinus`](https://crates.io/
 Please use [cargo-edit](https://crates.io/crates/cargo-edit) to always add the latest version of this library:
 
 ```cmd
-cargo add fruit-salad
+cargo add fruit-salad --features macros
 ```
 
 ## Example
