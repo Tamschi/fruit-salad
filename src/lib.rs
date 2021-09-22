@@ -50,7 +50,7 @@ use core::{
 #[cfg(feature = "macros")]
 pub use fruit_salad_proc_macro_definitions::{implement_dyncasts, Dyncast};
 
-impl dyn Dyncast {
+impl<'a> dyn 'a + Dyncast {
 	#[allow(missing_docs)]
 	#[must_use]
 	pub fn dyncast<T: 'static + ?Sized>(&self) -> Option<&T> {
@@ -71,7 +71,7 @@ impl dyn Dyncast {
 
 	#[allow(missing_docs)]
 	#[must_use]
-	pub fn dyncast_pinned<'a, T: 'static + ?Sized>(self: Pin<&'a Self>) -> Option<Pin<&'a T>> {
+	pub fn dyncast_pinned<T: 'static + ?Sized>(self: Pin<&Self>) -> Option<Pin<&T>> {
 		self.__dyncast(
 			unsafe { NonNull::new_unchecked(&*self as *const Self as *mut Self) }.cast(),
 			TypeId::of::<T>(),
@@ -81,9 +81,9 @@ impl dyn Dyncast {
 
 	#[allow(missing_docs)]
 	#[must_use]
-	pub fn dyncast_pinned_mut<'a, T: 'static + ?Sized>(
-		mut self: Pin<&'a mut Self>,
-	) -> Option<Pin<&'a mut T>> {
+	pub fn dyncast_pinned_mut<T: 'static + ?Sized>(
+		mut self: Pin<&mut Self>,
+	) -> Option<Pin<&mut T>> {
 		let this = unsafe {
 			NonNull::new_unchecked(Pin::into_inner_unchecked(self.as_mut()) as *mut Self)
 		};
@@ -91,6 +91,16 @@ impl dyn Dyncast {
 			.map(|pointer_data| unsafe {
 				pointer_data.as_ptr().cast::<Pin<&mut T>>().read_unaligned()
 			})
+	}
+
+	#[allow(missing_docs)]
+	#[must_use]
+	pub fn dyncast_ptr<T: 'static + ?Sized>(&self) -> Option<NonNull<T>> {
+		self.__dyncast(
+			unsafe { NonNull::new_unchecked(self as *const Self as *mut Self) }.cast(),
+			TypeId::of::<T>(),
+		)
+		.map(|pointer_data| unsafe { pointer_data.as_ptr().cast::<NonNull<T>>().read_unaligned() })
 	}
 }
 
@@ -190,24 +200,36 @@ impl Display for dyn Dyncast {
 	}
 }
 
-impl PartialEq for dyn Dyncast {
-	fn eq(&self, other: &(dyn 'static + Dyncast)) -> bool {
-		if let Some(this) = self.dyncast::<dyn PartialEq<dyn Dyncast>>() {
-			this.eq(other)
-		} else if let Some(other) = other.dyncast::<dyn PartialEq<dyn Dyncast>>() {
-			other.eq(self)
+impl<'a> PartialEq for dyn 'a + Dyncast {
+	fn eq(&self, other: &Self) -> bool {
+		if let Some(this) = self.dyncast_ptr::<dyn PartialEq<dyn Dyncast>>() {
+			unsafe {
+				let other = mem::transmute(other);
+				this.as_ref().eq(other)
+			}
+		} else if let Some(other) = other.dyncast_ptr::<dyn PartialEq<dyn Dyncast>>() {
+			unsafe {
+				let this = mem::transmute(self);
+				other.as_ref().eq(this)
+			}
 		} else {
 			false
 		}
 	}
 }
 
-impl PartialOrd for dyn Dyncast {
-	fn partial_cmp(&self, other: &(dyn 'static + Dyncast)) -> Option<Ordering> {
-		if let Some(this) = self.dyncast::<dyn PartialOrd<dyn Dyncast>>() {
-			this.partial_cmp(other)
-		} else if let Some(other) = other.dyncast::<dyn PartialOrd<dyn Dyncast>>() {
-			other.partial_cmp(self).map(Ordering::reverse)
+impl<'a> PartialOrd for dyn 'a + Dyncast {
+	fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+		if let Some(this) = self.dyncast_ptr::<dyn PartialOrd<dyn Dyncast>>() {
+			unsafe {
+				let other = mem::transmute(other);
+				this.as_ref().partial_cmp(other)
+			}
+		} else if let Some(other) = other.dyncast_ptr::<dyn PartialOrd<dyn Dyncast>>() {
+			unsafe {
+				let this = mem::transmute(self);
+				other.as_ref().partial_cmp(this).map(Ordering::reverse)
+			}
 		} else {
 			None
 		}
