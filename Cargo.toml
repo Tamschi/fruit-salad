@@ -1,15 +1,15 @@
 [package]
-name = "TODO_CRATE_NAME"
+name = "fruit-salad"
 version = "0.0.1"
 authors = ["Tamme Schichler <tamme@schichler.dev>"]
 edition = "2018"
-description = "TODO_DESCRIPTION"
+description = "Compare apples and oranges (and more). Trait object reference casting and trait object comparisons."
 license = "MIT OR Apache-2.0"
-repository = "https://github.com/Tamschi/TODO_CRATE_NAME"
-homepage = "https://github.com/Tamschi/TODO_CRATE_NAME/tree/v0.0.1"
-documentation = "https://docs.rs/TODO_CRATE_NAME/0.0.1"
-keywords = [] #TODO
-categories = [] #TODO
+repository = "https://github.com/Tamschi/fruit-salad"
+homepage = "https://github.com/Tamschi/fruit-salad/tree/v0.0.1"
+documentation = "https://docs.rs/fruit-salad/0.0.1"
+keywords = ["pin", "trait", "object", "eq", "ord"]
+categories = ["rust-patterns"]
 readme = "README.md"
 include = [
 	"**/*.rs",
@@ -25,8 +25,8 @@ resolver = "2"
 publish = false
 
 [badges]
-is-it-maintained-issue-resolution = { repository = "Tamschi/TODO_CRATE_NAME" }
-is-it-maintained-open-issues = { repository = "Tamschi/TODO_CRATE_NAME" }
+is-it-maintained-issue-resolution = { repository = "Tamschi/fruit-salad" }
+is-it-maintained-open-issues = { repository = "Tamschi/fruit-salad" }
 maintenance = { status = "experimental" } # This may differ between branches.
 
 [dev-dependencies]

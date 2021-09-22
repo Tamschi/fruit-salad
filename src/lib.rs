@@ -1,4 +1,4 @@
-#![doc(html_root_url = "https://docs.rs/TODO_CRATE_NAME/0.0.1")]
+#![doc(html_root_url = "https://docs.rs/fruit-salad/0.0.1")]
 #![warn(clippy::pedantic)]
 #![allow(clippy::semicolon_if_nothing_returned)]
 
