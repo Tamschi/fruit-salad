@@ -134,16 +134,21 @@ impl<'a> dyn 'a + Dyncast {
 /// [`Dyncast`] alone never exposes complete comparisons without explicit dyncast.
 ///
 /// However, the following subtraits are available for more completely comparable values:
-/// [`DyncastEq`], [`DyncastOrd`], and [`DyncastEqOrd`] which is both [`DyncastEq`] and [`DyncastOrd`].
 ///
-/// [`DyncastEq`] and [`DyncastOrd`] can be implemented manually.
-/// [`DyncastEqOrd`] is available only through its blanket implementation on types that are both of the former.
+/// - [`DyncastEq`], which is also [`Deref<Target = dyn Dyncast>`](`Deref`), and
+/// - [`DyncastOrd`], which is also [`Deref<Target = dyn DyncastEq>`](`Deref`).
+///
+/// Additionally, [`DynOrd`] is an object-safe version of [`Ord`].
+///
+/// > That's simplified a bit, but close enough.
+///
+/// [`DyncastEq`] and [`DyncastOrd`] can both be implemented manually.
 ///
 /// [`DyncastEq`] is implemented automatically iff you write `#[dyncast(impl dyn PartialEq<dyn Dyncast>)]`,
 /// conditional on `Self` being [`Eq`].
 ///
-/// [`DyncastOrd`] is implemented automatically iff you write `#[dyncast(impl dyn PartialOrd<dyn Dyncast>, Self)]`,
-/// conditional on `Self` being [`Ord`] and [`DyncastEq`].
+/// [`DyncastOrd`] is implemented automatically iff you write `#[dyncast(impl dyn PartialOrd<dyn Dyncast>, impl dyn DynOrd)]`,
+/// conditional on `Self` being [`DyncastEq`], [`Ord`] and [`Any`].
 ///
 /// ## Hashing
 ///
@@ -179,7 +184,7 @@ pub unsafe trait Dyncast {
 	) -> Option<MaybeUninit<[u8; mem::size_of::<&dyn Dyncast>()]>>;
 }
 
-impl Debug for dyn Dyncast {
+impl<'a> Debug for dyn 'a + Dyncast {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		f.write_str("dyn Dyncast = ")?;
 		#[allow(clippy::option_if_let_else)] // Can't because `f`.
@@ -191,7 +196,7 @@ impl Debug for dyn Dyncast {
 	}
 }
 
-impl Display for dyn Dyncast {
+impl<'a> Display for dyn 'a + Dyncast {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		#[allow(clippy::option_if_let_else)] // Can't because `f`.
 		if let Some(display) = self.dyncast::<dyn Display>() {
@@ -240,30 +245,39 @@ impl<'a> PartialOrd for dyn 'a + Dyncast {
 
 /// Object-safe [`Hash`].
 pub trait DynHash {
-	fn hash(&self, state: &mut dyn Hasher);
+	fn dyn_hash(&self, state: &mut dyn Hasher);
 }
 impl<T: ?Sized> DynHash for T
 where
 	T: Hash,
 {
-	fn hash(&self, mut state: &mut dyn Hasher) {
+	fn dyn_hash(&self, mut state: &mut dyn Hasher) {
 		<Self as Hash>::hash(self, &mut state)
 	}
 }
+impl<'a> Hash for dyn 'a + DynHash {
+	fn hash<H: Hasher>(&self, state: &mut H) {
+		self.dyn_hash(state)
+	}
+}
 
-impl Hash for dyn Dyncast {
+impl<'a> Hash for dyn 'a + Dyncast {
 	fn hash<H: Hasher>(&self, state: &mut H) {
 		if let Some(dyn_hash) = self.dyncast::<dyn DynHash>() {
-			dyn_hash.hash(state)
+			dyn_hash.dyn_hash(state)
 		}
 	}
 }
 
 /// Object-safe [`Ord`].
+///
+/// Where possible, prefer [`DyncastOrd`] over manually [`dyncast`](`<dyn Dyncast>::dyncast`)ing to [`dyn DynOrd`].
 pub trait DynOrd {
 	fn as_any(&self) -> &dyn Any;
 	fn dyn_cmp(&self, other: &dyn DynOrd) -> Ordering;
 }
+
+///TODO: This should be an explicit automatic implementation, instead.
 impl<T> DynOrd for T
 where
 	T: Ord + Any,
@@ -279,6 +293,22 @@ where
 		)
 	}
 }
+impl<'a> PartialEq<dyn 'a + DynOrd> for dyn 'a + DynOrd {
+	fn eq(&self, other: &Self) -> bool {
+		self.dyn_cmp(other) == Ordering::Equal
+	}
+}
+impl<'a> PartialOrd<dyn 'a + DynOrd> for dyn 'a + DynOrd {
+	fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+		Some(self.dyn_cmp(other))
+	}
+}
+impl<'a> Eq for dyn 'a + DynOrd {}
+impl<'a> Ord for dyn 'a + DynOrd {
+	fn cmp(&self, other: &Self) -> Ordering {
+		self.dyn_cmp(other)
+	}
+}
 
 /// [`Dyncast`] and *dynamically* [`Eq`]
 //TODO: Other traits
@@ -292,12 +322,29 @@ impl<'a> Deref for dyn 'a + DyncastEq {
 		unsafe { mem::transmute(self.as_dyncast()) }
 	}
 }
-impl<'a> PartialEq for dyn 'a + DyncastEq {
-	fn eq(&self, other: &Self) -> bool {
-		self.as_dyncast().eq(other.as_dyncast())
+impl<'a> Debug for dyn 'a + DyncastEq {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		Debug::fmt(self.as_dyncast(), f)
 	}
 }
-impl Eq for dyn DyncastEq {}
+impl<'a> Display for dyn 'a + DyncastEq {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		Display::fmt(self.as_dyncast(), f)
+	}
+}
+impl<'a> PartialEq for dyn 'a + DyncastEq {
+	fn eq(&self, other: &Self) -> bool {
+		self.dyncast::<dyn PartialEq<dyn Dyncast>>()
+			.expect("Expected `Self` to be *dynamically* `dyn PartialEq<dyn Dyncast>` via `dyn DyncastOrd: PartialOrd`")
+			.eq(unsafe { mem::transmute(other.as_dyncast()) })
+	}
+}
+impl<'a> Eq for dyn 'a + DyncastEq {}
+impl<'a> Hash for dyn 'a + DyncastEq {
+	fn hash<H: Hasher>(&self, state: &mut H) {
+		self.as_dyncast().hash(state)
+	}
+}
 
 /// [`DyncastEq`] and *dynamically* [`Ord`]
 //TODO: Other traits
@@ -311,10 +358,19 @@ impl<'a> Deref for dyn 'a + DyncastOrd {
 		unsafe { mem::transmute(self.as_dyncast_eq()) }
 	}
 }
+impl<'a> Debug for dyn 'a + DyncastOrd {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		Debug::fmt(self.as_dyncast(), f)
+	}
+}
+impl<'a> Display for dyn 'a + DyncastOrd {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		Display::fmt(self.as_dyncast(), f)
+	}
+}
 impl<'a> PartialEq for dyn 'a + DyncastOrd {
 	fn eq(&self, other: &Self) -> bool {
-		let this: &dyn DyncastEq = self;
-		this.eq(other)
+		self.as_dyncast_eq().eq(other)
 	}
 }
 impl<'a> Eq for dyn 'a + DyncastOrd {}
@@ -328,12 +384,17 @@ impl<'a> PartialOrd for dyn 'a + DyncastOrd {
 impl<'a> Ord for dyn 'a + DyncastOrd {
 	fn cmp(&self, other: &Self) -> Ordering {
 		self.dyncast::<dyn DynOrd>()
-		.expect("Expected `Self` to be *dynamically* `dyn PartialOrd<dyn Dyncast>` via `dyn DyncastOrd: PartialOrd`")
+		.expect("Expected `Self` to be *dynamically* `dyn PartialOrd<dyn DynOrd>` via `dyn DyncastOrd: Ord`")
 		.dyn_cmp(
 			other
 				.dyncast::<dyn DynOrd>()
-				.expect("Expected `Self` to be *dynamically* `dyn PartialOrd<dyn Dyncast>` via `dyn DyncastOrd: PartialOrd`")
+				.expect("Expected `other` to be *dynamically* `dyn PartialOrd<dyn DynOrd>` via `dyn DyncastOrd: Ord`")
 		)
+	}
+}
+impl<'a> Hash for dyn 'a + DyncastOrd {
+	fn hash<H: Hasher>(&self, state: &mut H) {
+		self.as_dyncast().hash(state)
 	}
 }
 
