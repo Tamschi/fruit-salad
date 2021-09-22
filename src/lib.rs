@@ -38,11 +38,12 @@ pub mod readme {
 }
 
 use core::{
-	any::TypeId,
+	any::{Any, TypeId},
 	cmp::Ordering,
 	fmt::{self, Debug, Display},
 	hash::{Hash, Hasher},
 	mem::{self, MaybeUninit},
+	ops::Deref,
 	pin::Pin,
 	ptr::NonNull,
 };
@@ -128,21 +129,21 @@ impl<'a> dyn 'a + Dyncast {
 ///
 /// Comparisons between distinct types will always result in [`false`] or [`None`] with the automatic implementations.
 ///
-// /// ## Complete comparisons
-// ///
-// /// [`Dyncast`] alone never exposes complete comparisons without explicit dyncast.
-// ///
-// /// However, the following subtraits are available for more completely comparable values:
-// /// [`DyncastEq`], [`DyncastOrd`], and [`DyncastEqOrd`] which is both [`DyncastEq`] and [`DyncastOrd`].
-// ///
-// /// [`DyncastEq`] and [`DyncastOrd`] can be implemented manually.
-// /// [`DyncastEqOrd`] is available only through its blanket implementation on types that are both of the former.
-// ///
-// /// [`DyncastEq`] is implemented automatically iff you write `#[dyncast(impl dyn PartialEq<dyn Dyncast>)]`,
-// /// conditional on `Self` being [`Eq`].
-// ///
-// /// [`DyncastOrd`] is implemented automatically iff you write `#[dyncast(impl dyn PartialOrd<dyn Dyncast>, Self)]`,
-// /// conditional on `Self` being [`Ord`] and [`DyncastEq`].
+/// ## Complete comparisons
+///
+/// [`Dyncast`] alone never exposes complete comparisons without explicit dyncast.
+///
+/// However, the following subtraits are available for more completely comparable values:
+/// [`DyncastEq`], [`DyncastOrd`], and [`DyncastEqOrd`] which is both [`DyncastEq`] and [`DyncastOrd`].
+///
+/// [`DyncastEq`] and [`DyncastOrd`] can be implemented manually.
+/// [`DyncastEqOrd`] is available only through its blanket implementation on types that are both of the former.
+///
+/// [`DyncastEq`] is implemented automatically iff you write `#[dyncast(impl dyn PartialEq<dyn Dyncast>)]`,
+/// conditional on `Self` being [`Eq`].
+///
+/// [`DyncastOrd`] is implemented automatically iff you write `#[dyncast(impl dyn PartialOrd<dyn Dyncast>, Self)]`,
+/// conditional on `Self` being [`Ord`] and [`DyncastEq`].
 ///
 /// ## Hashing
 ///
@@ -258,54 +259,84 @@ impl Hash for dyn Dyncast {
 	}
 }
 
-// /// [`Dyncast`] and *dynamically* [`Eq`]
-// //TODO: Other traits
-// pub trait DyncastEq: Dyncast {
-// 	fn as_dyncast(&self) -> &dyn Dyncast;
-// }
-// impl PartialEq for dyn DyncastEq
-// where
-// 	Self: 'static,
-// {
-// 	fn eq(&self, other: &Self) -> bool {
-// 		self.as_dyncast().dyncast::<dyn PartialEq<dyn Dyncast>>()
-// 			.expect("Expected `Self` to be *dynamically* `dyn PartialEq<dyn Dyncast>` via `dyn DyncastEq: PartialEq`")
-// 			.eq(other.as_dyncast())
-// 	}
-// }
-// impl Eq for dyn DyncastEq {}
+/// Object-safe [`Ord`].
+pub trait DynOrd: Dyncast + Any {
+	fn as_dyncast(&self) -> &dyn Dyncast;
+	fn cmp(&self, other: &dyn DynOrd) -> Ordering;
+}
+impl<T> DynOrd for T
+where
+	T: Dyncast + Ord + Any,
+{
+	fn as_dyncast(&self) -> &dyn Dyncast {
+		self
+	}
 
-// /// [`DyncastEq`] and *dynamically* [`Ord`]
-// //TODO: Other traits
-// pub trait DyncastOrd: DyncastEq {
-// 	fn cmp(&self, other: &dyn DyncastOrd) -> Ordering;
-// }
-// impl Deref for dyn DyncastOrd {
-// 	type Target = dyn DyncastEq;
+	fn cmp(&self, other: &dyn DynOrd) -> Ordering {
+		other.as_dyncast().dyncast::<Self>().map_or_else(
+			|| TypeId::of::<Self>().cmp(&other.type_id()),
+			|other| Ord::cmp(self, other),
+		)
+	}
+}
 
-// 	fn deref(&self) -> &Self::Target {
-// 		self
-// 	}
-// }
-// impl PartialEq for dyn DyncastOrd {
-// 	fn eq(&self, other: &Self) -> bool {
-// 		let this: &dyn DyncastEq = self;
-// 		this.eq(other)
-// 	}
-// }
-// impl Eq for dyn DyncastOrd {}
-// impl PartialOrd for dyn DyncastOrd {
-// 	fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-// 		self.dyncast::<dyn PartialOrd<dyn Dyncast>>()
-// 		.expect("Expected `Self` to be *dynamically* `dyn PartialOrd<dyn Dyncast>` via `dyn DyncastOrd: PartialOrd`")
-// 		.partial_cmp(other)
-// 	}
-// }
-// impl Ord for dyn DyncastOrd {
-// 	fn cmp(&self, other: &Self) -> Ordering {
-// 		Self::cmp(self, other)
-// 	}
-// }
+/// [`Dyncast`] and *dynamically* [`Eq`]
+//TODO: Other traits
+pub trait DyncastEq: Dyncast {
+	fn as_dyncast(&self) -> &dyn Dyncast;
+}
+impl<'a> Deref for dyn 'a + DyncastEq {
+	type Target = dyn Dyncast;
+
+	fn deref(&self) -> &Self::Target {
+		unsafe { mem::transmute(self.as_dyncast()) }
+	}
+}
+impl<'a> PartialEq for dyn 'a + DyncastEq {
+	fn eq(&self, other: &Self) -> bool {
+		self.as_dyncast().eq(other.as_dyncast())
+	}
+}
+impl Eq for dyn DyncastEq {}
+
+/// [`DyncastEq`] and *dynamically* [`Ord`]
+//TODO: Other traits
+pub trait DyncastOrd: DyncastEq {
+	fn as_dyncast_eq(&self) -> &dyn DyncastEq;
+	fn cmp(&self, other: &dyn Dyncast) -> Ordering;
+}
+impl<'a> Deref for dyn 'a + DyncastOrd {
+	type Target = dyn 'a + DyncastEq;
+
+	fn deref(&self) -> &Self::Target {
+		unsafe { mem::transmute(self.as_dyncast_eq()) }
+	}
+}
+impl<'a> PartialEq for dyn 'a + DyncastOrd {
+	fn eq(&self, other: &Self) -> bool {
+		let this: &dyn DyncastEq = self;
+		this.eq(other)
+	}
+}
+impl<'a> Eq for dyn 'a + DyncastOrd {}
+impl<'a> PartialOrd for dyn 'a + DyncastOrd {
+	fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+		self.dyncast::<dyn PartialOrd<dyn Dyncast>>()
+		.expect("Expected `Self` to be *dynamically* `dyn PartialOrd<dyn Dyncast>` via `dyn DyncastOrd: PartialOrd`")
+		.partial_cmp(other)
+	}
+}
+impl Ord for dyn DyncastOrd {
+	fn cmp(&self, other: &Self) -> Ordering {
+		self.dyncast::<dyn DynOrd>()
+		.expect("Expected `Self` to be *dynamically* `dyn PartialOrd<dyn Dyncast>` via `dyn DyncastOrd: PartialOrd`")
+		.cmp(
+			other
+				.dyncast::<dyn DynOrd>()
+				.expect("Expected `Self` to be *dynamically* `dyn PartialOrd<dyn Dyncast>` via `dyn DyncastOrd: PartialOrd`")
+		)
+	}
+}
 
 #[doc(hidden)]
 pub mod __ {
