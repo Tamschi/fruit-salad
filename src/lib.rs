@@ -260,21 +260,21 @@ impl Hash for dyn Dyncast {
 }
 
 /// Object-safe [`Ord`].
-pub trait DynOrd: Dyncast + Any {
-	fn as_dyncast(&self) -> &dyn Dyncast;
-	fn cmp(&self, other: &dyn DynOrd) -> Ordering;
+pub trait DynOrd {
+	fn as_any(&self) -> &dyn Any;
+	fn dyn_cmp(&self, other: &dyn DynOrd) -> Ordering;
 }
 impl<T> DynOrd for T
 where
-	T: Dyncast + Ord + Any,
+	T: Ord + Any,
 {
-	fn as_dyncast(&self) -> &dyn Dyncast {
+	fn as_any(&self) -> &dyn Any {
 		self
 	}
 
-	fn cmp(&self, other: &dyn DynOrd) -> Ordering {
-		other.as_dyncast().dyncast::<Self>().map_or_else(
-			|| TypeId::of::<Self>().cmp(&other.type_id()),
+	fn dyn_cmp(&self, other: &dyn DynOrd) -> Ordering {
+		other.as_any().downcast_ref::<Self>().map_or_else(
+			|| TypeId::of::<Self>().cmp(&other.as_any().type_id()),
 			|other| Ord::cmp(self, other),
 		)
 	}
@@ -329,7 +329,7 @@ impl<'a> Ord for dyn 'a + DyncastOrd {
 	fn cmp(&self, other: &Self) -> Ordering {
 		self.dyncast::<dyn DynOrd>()
 		.expect("Expected `Self` to be *dynamically* `dyn PartialOrd<dyn Dyncast>` via `dyn DyncastOrd: PartialOrd`")
-		.cmp(
+		.dyn_cmp(
 			other
 				.dyncast::<dyn DynOrd>()
 				.expect("Expected `Self` to be *dynamically* `dyn PartialOrd<dyn Dyncast>` via `dyn DyncastOrd: PartialOrd`")
