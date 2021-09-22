@@ -1,3 +1,32 @@
+//! This is a (mostly) trait object **reference** casting and comparison crate.
+//!
+//! There is no registry, instead targets are engraved directly into the `Dyncast` trait implementation by a derive macro.
+//!
+//! Concrete types can be targeted too, unsafely through reinterpret casts.  
+//! (This is subject to `#[deny(unsafe)]`. (TODO))
+//!
+//! It also does mutability and pin projection, while being economical regarding text size…
+//!
+//! > Basically I needed something that's a bit less fancy than the existing solutions,
+//! > and it escalated a bit from there.
+//!
+//! Originally developed as part of [`rhizome`](https://crates.io/crates/rhizome) but now separate,
+//! this crate also works very well in combination with [`pinus`](https://crates.io/crates/pinus).
+//!
+//! ## Installation
+//!
+//! Please use [cargo-edit](https://crates.io/crates/cargo-edit) to always add the latest version of this library:
+//!
+//! ```cmd
+//! cargo add fruit-salad --features macros
+//! ```
+//!
+//! ## Example
+//!
+//! ```rust
+//! // TODO_EXAMPLE
+//! ```
+
 #![doc(html_root_url = "https://docs.rs/fruit-salad/0.0.1")]
 #![warn(clippy::pedantic)]
 #![allow(clippy::semicolon_if_nothing_returned)]
