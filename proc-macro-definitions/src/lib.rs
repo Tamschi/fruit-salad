@@ -24,7 +24,7 @@ use syn::{
 };
 use tap::Pipe;
 
-/// Automatically implements `Dyncast` for an enum, struct, trait, trait alias, type alias or union.
+/// Implements `Dyncast` for an enum, struct, trait, trait alias, type alias or union.
 ///
 /// The implementation is limited to targets that are `'static`,
 /// and targeting `Self` is explicit.
@@ -64,25 +64,6 @@ fn implement_dyncast(
 
 	let (impl_generics, type_generics, where_clause) = generics.split_for_impl();
 
-	let mut where_clause = where_clause.cloned().unwrap_or_else(|| WhereClause {
-		where_token: Token![where](Span::mixed_site()),
-		predicates: Punctuated::default(),
-	});
-	let predicates = &mut where_clause.predicates;
-	predicates.push(WherePredicate::Type(PredicateType {
-		lifetimes: None,
-		bounded_ty: Type::Verbatim(Token![Self](Span::mixed_site()).into_token_stream()),
-		colon_token: Token![:](Span::mixed_site()),
-		bounds: {
-			let mut bounds = Punctuated::new();
-			bounds.push_value(TypeParamBound::Lifetime(Lifetime {
-				apostrophe: Span::mixed_site(),
-				ident: Ident::new("static", Span::mixed_site()),
-			}));
-			bounds
-		},
-	}));
-
 	let (target_errors, mut targets): (Vec<_>, Vec<Type>) = attributes
 		.iter()
 		.filter(|attribute| {
@@ -114,32 +95,63 @@ fn implement_dyncast(
 		.unwrap(/*FIXME: Fail better! */)
 		.into_iter()
 		.flatten()
-		.map(|dyncast_target| (dyncast_target.diagnostics(), dyncast_target.1))
+		.map(|dyncast_target| (dyncast_target.diagnostics(), dyncast_target.type_))
 		.unzip();
+
+	let mut needs_static_self = false;
 
 	// This is required for the const assertion.
 	for target in &mut targets {
-		struct SelfReplacer(Type);
-		impl VisitMut for SelfReplacer {
+		struct SelfReplacer<'a> {
+			replacement: Type,
+			needs_static_self: &'a mut bool,
+		}
+		impl<'a> VisitMut for SelfReplacer<'a> {
 			fn visit_type_mut(&mut self, t: &mut Type) {
 				if is_self_type(t) {
-					*t = self.0.clone()
+					*self.needs_static_self = true;
+					*t = self.replacement.clone()
 				} else {
 					visit_mut::visit_type_mut(self, t)
 				}
 			}
 		}
 
-		SelfReplacer({
-			call2_strict(
+		SelfReplacer {
+			replacement: call2_strict(
 				quote_spanned!(Span::mixed_site()=> #dyn_ #ident#type_generics),
 				Type::parse,
 			)
 			.debugless_unwrap()
-			.unwrap()
-		})
+			.unwrap(),
+			needs_static_self: &mut needs_static_self,
+		}
 		.visit_type_mut(target);
 	}
+
+	let where_clause = if needs_static_self {
+		let mut where_clause = where_clause.cloned().unwrap_or_else(|| WhereClause {
+			where_token: Token![where](Span::mixed_site()),
+			predicates: Punctuated::default(),
+		});
+		let predicates = &mut where_clause.predicates;
+		predicates.push(WherePredicate::Type(PredicateType {
+			lifetimes: None,
+			bounded_ty: Type::Verbatim(Token![Self](Span::mixed_site()).into_token_stream()),
+			colon_token: Token![:](Span::mixed_site()),
+			bounds: {
+				let mut bounds = Punctuated::new();
+				bounds.push_value(TypeParamBound::Lifetime(Lifetime {
+					apostrophe: Span::mixed_site(),
+					ident: Ident::new("static", Span::mixed_site()),
+				}));
+				bounds
+			},
+		}));
+		Some(where_clause)
+	} else {
+		where_clause.cloned()
+	};
 
 	quote_spanned! {Span::mixed_site()=>
 		#(#attribute_errors)*
@@ -185,21 +197,33 @@ fn is_self_type(t: &Type) -> bool {
 	matches!(t, Type::Path(tp) if tp.qself.is_none() && tp.path.is_ident("Self"))
 }
 
-struct DyncastTarget(Option<Token![unsafe]>, Type);
+struct DyncastTarget {
+	unsafe_: Option<Token![unsafe]>,
+	impl_: Option<Token![impl]>,
+	type_: Type,
+}
 impl Parse for DyncastTarget {
 	fn parse(input: ParseStream) -> Result<Self> {
-		Ok(Self(input.parse().unwrap(), input.parse()?))
+		Ok(Self {
+			unsafe_: input.parse().unwrap(),
+			impl_: input.parse().unwrap(),
+			type_: input.parse()?,
+		})
 	}
 }
 impl DyncastTarget {
 	fn diagnostics(&self) -> impl 'static + ToTokens {
-		if self.0.is_none() && !matches!(&self.1, Type::TraitObject(_)) && !is_self_type(&self.1) {
-			Error::new_spanned(&self.1, "This cast requires an `unsafe` prefix.")
-				.into_compile_error()
-		} else if self.0.is_some()
-			&& (matches!(&self.1, Type::TraitObject(_)) || is_self_type(&self.1))
+		if self.unsafe_.is_none()
+			&& !matches!(&self.type_, Type::TraitObject(_))
+			&& !is_self_type(&self.type_)
 		{
-			let unsafe_ = self.0.as_ref().unwrap();
+			Error::new_spanned(&self.type_, "This cast requires an `unsafe` prefix.")
+				.into_compile_error()
+		} else if self.unsafe_.is_some()
+			&& (matches!(&self.type_, Type::TraitObject(_)) || is_self_type(&self.type_))
+		{
+			// Causes an "unneessary unsafe block" style warning.
+			let unsafe_ = self.unsafe_.as_ref().unwrap();
 			quote_spanned!(unsafe_.span=> #unsafe_ {})
 		} else {
 			return None;
@@ -208,7 +232,7 @@ impl DyncastTarget {
 	}
 }
 
-/// Automatically implements `Dyncast` for an enum, struct, trait, trail alias, type alias or union.
+/// Implements `Dyncast` for an enum, struct, trait, trail alias, type alias or union.
 ///
 /// The implementation is limited to targets that are `'static`,
 /// and targeting `Self` is explicit.

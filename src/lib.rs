@@ -125,9 +125,9 @@ impl<'a> dyn 'a + Dyncast {
 /// > These implementations should mirror each other if both are available.
 ///
 /// You can write `#[dyncast(impl dyn PartialEq<dyn Dyncast>)]` and `#[dyncast(impl dyn PartialOrd<dyn Dyncast>)]` to
-/// implement these automatically, respectively based on the plain [`PartialEq`] and [`PartialOrd`] implementations.
+/// generate implementations for these, respectively based on the plain [`PartialEq`] and [`PartialOrd`] implementations.
 ///
-/// Comparisons between distinct types will always result in [`false`] or [`None`] with the automatic implementations.
+/// Comparisons between distinct types will always result in [`false`] or [`None`] with the generated implementations.
 ///
 /// ## Complete comparisons
 ///
@@ -138,16 +138,17 @@ impl<'a> dyn 'a + Dyncast {
 /// - [`DyncastEq`], which is also [`Deref<Target = dyn Dyncast>`](`Deref`), and
 /// - [`DyncastOrd`], which is also [`Deref<Target = dyn DyncastEq>`](`Deref`).
 ///
-/// Additionally, [`DynOrd`] is an object-safe version of [`Ord`].
+/// Additionally, [`DynOrd`] is an object-safe version of [`Ord`] and can be generated,
+/// conditional on `Self` being [`Ord`] and [`Any`].
 ///
 /// > That's simplified a bit, but close enough.
 ///
 /// [`DyncastEq`] and [`DyncastOrd`] can both be implemented manually.
 ///
-/// [`DyncastEq`] is implemented automatically iff you write `#[dyncast(impl dyn PartialEq<dyn Dyncast>)]`,
+/// A [`DyncastEq`] implementation is generated implicitly iff you write `#[dyncast(impl dyn PartialEq<dyn Dyncast>)]`,
 /// conditional on `Self` being [`Eq`].
 ///
-/// [`DyncastOrd`] is implemented automatically iff you write `#[dyncast(impl dyn PartialOrd<dyn Dyncast>, impl dyn DynOrd)]`,
+/// A [`DyncastOrd`] implementation is generated implicitly iff you write `#[dyncast(impl dyn PartialOrd<dyn Dyncast>, impl dyn DynOrd)]`,
 /// conditional on `Self` being [`DyncastEq`], [`Ord`] and [`Any`].
 ///
 /// ## Hashing
@@ -277,7 +278,7 @@ pub trait DynOrd {
 	fn dyn_cmp(&self, other: &dyn DynOrd) -> Ordering;
 }
 
-///TODO: This should be an explicit automatic implementation, instead.
+///TODO: This should be an explicitly generated implementation, instead.
 impl<T> DynOrd for T
 where
 	T: Ord + Any,
@@ -313,7 +314,7 @@ impl<'a> Ord for dyn 'a + DynOrd {
 /// [`Dyncast`] and *dynamically* [`Eq`]
 //TODO: Other traits
 pub trait DyncastEq: Dyncast {
-	fn as_dyncast(&self) -> &dyn Dyncast;
+	fn as_dyncast(&self) -> &(dyn 'static + Dyncast);
 }
 impl<'a> Deref for dyn 'a + DyncastEq {
 	type Target = dyn Dyncast;
@@ -370,7 +371,7 @@ impl<'a> Display for dyn 'a + DyncastOrd {
 }
 impl<'a> PartialEq for dyn 'a + DyncastOrd {
 	fn eq(&self, other: &Self) -> bool {
-		self.as_dyncast_eq().eq(other)
+		self.as_dyncast_eq().eq(other.as_dyncast_eq())
 	}
 }
 impl<'a> Eq for dyn 'a + DyncastOrd {}
@@ -378,7 +379,7 @@ impl<'a> PartialOrd for dyn 'a + DyncastOrd {
 	fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
 		self.dyncast::<dyn PartialOrd<dyn Dyncast>>()
 		.expect("Expected `Self` to be *dynamically* `dyn PartialOrd<dyn Dyncast>` via `dyn DyncastOrd: PartialOrd`")
-		.partial_cmp(other)
+		.partial_cmp(other.as_dyncast())
 	}
 }
 impl<'a> Ord for dyn 'a + DyncastOrd {

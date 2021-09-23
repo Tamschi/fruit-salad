@@ -14,6 +14,7 @@ assert_impl_all!(Struct: Dyncast);
 
 // A `Self: 'static` bound is added automatically.
 #[derive(Dyncast)]
+#[dyncast(Self)]
 struct GenericStruct<X>(PhantomData<X>);
 assert_impl_all!(GenericStruct<()>: Dyncast);
 
