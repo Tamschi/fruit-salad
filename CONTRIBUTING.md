@@ -94,7 +94,7 @@ See <https://github.com/Tamschi/fruit-salad/issues/labels> for details on indivi
 
 - `effort:`
 
-  Relative effort. There's no specific unit of measurement.
+  Relative effort required. There's no specific unit of measurement.
 
 - `priority:`
 
