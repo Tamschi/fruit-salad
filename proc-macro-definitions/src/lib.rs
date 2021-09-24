@@ -64,6 +64,28 @@ fn implement_dyncast(
 
 	let (impl_generics, type_generics, where_clause) = generics.split_for_impl();
 
+	let where_clause = {
+		let mut where_clause = where_clause.cloned().unwrap_or_else(|| WhereClause {
+			where_token: Token![where](Span::mixed_site()),
+			predicates: Punctuated::default(),
+		});
+		let predicates = &mut where_clause.predicates;
+		predicates.push(WherePredicate::Type(PredicateType {
+			lifetimes: None,
+			bounded_ty: Type::Verbatim(Token![Self](Span::mixed_site()).into_token_stream()),
+			colon_token: Token![:](Span::mixed_site()),
+			bounds: {
+				let mut bounds = Punctuated::new();
+				bounds.push_value(TypeParamBound::Lifetime(Lifetime {
+					apostrophe: Span::mixed_site(),
+					ident: Ident::new("static", Span::mixed_site()),
+				}));
+				bounds
+			},
+		}));
+		Some(where_clause)
+	};
+
 	let (target_errors, mut targets): (Vec<_>, Vec<Type>) = attributes
 		.iter()
 		.filter(|attribute| {
@@ -98,18 +120,14 @@ fn implement_dyncast(
 		.map(|dyncast_target| (dyncast_target.diagnostics(), dyncast_target.type_))
 		.unzip();
 
-	let mut needs_static_self = false;
-
 	// This is required for the const assertion.
 	for target in &mut targets {
-		struct SelfReplacer<'a> {
+		struct SelfReplacer {
 			replacement: Type,
-			needs_static_self: &'a mut bool,
 		}
-		impl<'a> VisitMut for SelfReplacer<'a> {
+		impl VisitMut for SelfReplacer {
 			fn visit_type_mut(&mut self, t: &mut Type) {
 				if is_self_type(t) {
-					*self.needs_static_self = true;
 					*t = self.replacement.clone()
 				} else {
 					visit_mut::visit_type_mut(self, t)
@@ -124,34 +142,9 @@ fn implement_dyncast(
 			)
 			.debugless_unwrap()
 			.unwrap(),
-			needs_static_self: &mut needs_static_self,
 		}
 		.visit_type_mut(target);
 	}
-
-	let where_clause = if needs_static_self {
-		let mut where_clause = where_clause.cloned().unwrap_or_else(|| WhereClause {
-			where_token: Token![where](Span::mixed_site()),
-			predicates: Punctuated::default(),
-		});
-		let predicates = &mut where_clause.predicates;
-		predicates.push(WherePredicate::Type(PredicateType {
-			lifetimes: None,
-			bounded_ty: Type::Verbatim(Token![Self](Span::mixed_site()).into_token_stream()),
-			colon_token: Token![:](Span::mixed_site()),
-			bounds: {
-				let mut bounds = Punctuated::new();
-				bounds.push_value(TypeParamBound::Lifetime(Lifetime {
-					apostrophe: Span::mixed_site(),
-					ident: Ident::new("static", Span::mixed_site()),
-				}));
-				bounds
-			},
-		}));
-		Some(where_clause)
-	} else {
-		where_clause.cloned()
-	};
 
 	quote_spanned! {Span::mixed_site()=>
 		#(#attribute_errors)*
