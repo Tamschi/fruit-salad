@@ -16,27 +16,33 @@
 	},
 	{
 		"name": "effort: 1",
-		"color": "91ca55"
+		"color": "91ca55",
+		"description": "Relative effort required. There's no specific unit of measurement."
 	},
 	{
 		"name": "effort: 2",
-		"color": "c2e2a2"
+		"color": "c2e2a2",
+		"description": "Relative effort required. There's no specific unit of measurement."
 	},
 	{
 		"name": "effort: 3",
-		"color": "e9f4dc"
+		"color": "e9f4dc",
+		"description": "Relative effort required. There's no specific unit of measurement."
 	},
 	{
 		"name": "effort: 5",
-		"color": "fef6d7"
+		"color": "fef6d7",
+		"description": "Relative effort required. There's no specific unit of measurement."
 	},
 	{
 		"name": "effort: 8",
-		"color": "fef2c0"
+		"color": "fef2c0",
+		"description": "Relative effort required. There's no specific unit of measurement."
 	},
 	{
 		"name": "effort: 13",
-		"color": "fbca04"
+		"color": "fbca04",
+		"description": "Relative effort required. There's no specific unit of measurement."
 	},
 	{
 		"name": "priority: first",
@@ -50,7 +56,7 @@
 	},
 	{
 		"name": "priority: someday",
-		"color": "fbca04",
+		"color": "000000",
 		"description": "If you need this, please let me know!"
 	},
 	{
@@ -73,7 +79,7 @@
 	},
 	{
 		"name": "state: inactive",
-		"color": "cfd3d7",
+		"color": "000000",
 		"description": "No action needed or possible. The issue is either fixed or addressed better by other issues.",
 		"aliases": [
 			"duplicate"
