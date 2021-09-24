@@ -32,6 +32,9 @@
 #![allow(clippy::semicolon_if_nothing_returned)]
 #![no_std]
 
+#[cfg(feature = "std")]
+extern crate std;
+
 #[cfg(doctest)]
 pub mod readme {
 	doc_comment::doctest!("../README.md");
@@ -43,7 +46,7 @@ use core::{
 	fmt::{self, Debug, Display},
 	hash::{Hash, Hasher},
 	mem::{self, MaybeUninit},
-	ops::Deref,
+	ops::{Deref, DerefMut},
 	pin::Pin,
 	ptr::NonNull,
 };
@@ -273,54 +276,116 @@ impl<'a> Hash for dyn 'a + Dyncast {
 /// Object-safe [`Ord`].
 ///
 /// Where possible, prefer [`DyncastOrd`] over manually [`dyncast`](`<dyn Dyncast>::dyncast`)ing to [`dyn DynOrd`].
-pub trait DynOrd {
-	fn as_any(&self) -> &dyn Any;
-	fn dyn_cmp(&self, other: &dyn DynOrd) -> Ordering;
+pub unsafe trait DynOrd {
+	fn concrete_type_id(&self) -> TypeId;
+
+	/// # Safety:
+	///
+	/// `this` must point to the same instance as `self`.
+	unsafe fn dyn_cmp<'a>(&self, this: &dyn DynOrd, other: &dyn DynOrd) -> Ordering;
 }
 
 ///TODO: This should be an explicitly generated implementation, instead.
-impl<T> DynOrd for T
+unsafe impl<T> DynOrd for T
 where
 	T: Ord + Any,
 {
-	fn as_any(&self) -> &dyn Any {
-		self
+	fn concrete_type_id(&self) -> TypeId {
+		self.type_id()
 	}
 
-	fn dyn_cmp(&self, other: &dyn DynOrd) -> Ordering {
-		other.as_any().downcast_ref::<Self>().map_or_else(
-			|| TypeId::of::<Self>().cmp(&other.as_any().type_id()),
-			|other| Ord::cmp(self, other),
-		)
+	unsafe fn dyn_cmp<'a>(&self, this: &(dyn 'a + DynOrd), other: &(dyn 'a + DynOrd)) -> Ordering {
+		debug_assert!(core::ptr::eq(self, this as *const _ as *const _));
+		match this.concrete_type_id().cmp(&other.concrete_type_id()) {
+			Ordering::Equal => unsafe {
+				(&*(this as *const dyn DynOrd).cast::<Self>())
+					.cmp(&*(other as *const dyn DynOrd).cast::<Self>())
+			},
+			not_equal => not_equal,
+		}
 	}
 }
 impl<'a> PartialEq<dyn 'a + DynOrd> for dyn 'a + DynOrd {
 	fn eq(&self, other: &Self) -> bool {
-		self.dyn_cmp(other) == Ordering::Equal
+		unsafe { self.dyn_cmp(self, other) == Ordering::Equal }
 	}
 }
 impl<'a> PartialOrd<dyn 'a + DynOrd> for dyn 'a + DynOrd {
 	fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-		Some(self.dyn_cmp(other))
+		Some(unsafe { self.dyn_cmp(self, other) })
 	}
 }
 impl<'a> Eq for dyn 'a + DynOrd {}
 impl<'a> Ord for dyn 'a + DynOrd {
 	fn cmp(&self, other: &Self) -> Ordering {
-		self.dyn_cmp(other)
+		unsafe { self.dyn_cmp(self, other) }
 	}
 }
 
+mod private {
+	use crate::{Dyncast, DyncastEq};
+
+	pub trait Upcast<T: ?Sized> {
+		// Based on this technique for object-safe `Self: Sized` defaults by @nbdd0121:
+		// <https://rust-lang.zulipchat.com/#narrow/stream/144729-wg-traits/topic/Dyn.20upcasting.20vs.20deref.20coercion/near/254603160>
+
+		unsafe fn upcast(&self) -> &T;
+		unsafe fn upcast_mut(&mut self) -> &mut T;
+	}
+	impl<'a, T> Upcast<dyn 'a + Dyncast> for T
+	where
+		T: 'a + Dyncast,
+	{
+		unsafe fn upcast(&self) -> &(dyn 'a + Dyncast) {
+			self
+		}
+
+		unsafe fn upcast_mut(&mut self) -> &mut (dyn 'a + Dyncast) {
+			self
+		}
+	}
+	impl<'a, T> Upcast<dyn 'a + DyncastEq> for T
+	where
+		T: 'a + DyncastEq,
+	{
+		unsafe fn upcast(&self) -> &(dyn 'a + DyncastEq) {
+			self
+		}
+
+		unsafe fn upcast_mut(&mut self) -> &mut (dyn 'a + DyncastEq) {
+			self
+		}
+	}
+}
+use private::Upcast;
+
 /// [`Dyncast`] and *dynamically* [`Eq`]
 //TODO: Other traits
-pub trait DyncastEq: Dyncast {
-	fn as_dyncast(&self) -> &(dyn 'static + Dyncast);
+pub trait DyncastEq: Dyncast + Upcast<dyn Dyncast> {
+	fn as_dyncast<'a>(&self) -> &(dyn 'a + Dyncast)
+	where
+		Self: 'a,
+	{
+		self.upcast()
+	}
+
+	fn as_dyncast_mut<'a>(&mut self) -> &mut (dyn 'a + Dyncast)
+	where
+		Self: 'a,
+	{
+		self.upcast_mut()
+	}
 }
 impl<'a> Deref for dyn 'a + DyncastEq {
-	type Target = dyn Dyncast;
+	type Target = dyn 'a + Dyncast;
 
 	fn deref(&self) -> &Self::Target {
-		unsafe { mem::transmute(self.as_dyncast()) }
+		self.as_dyncast()
+	}
+}
+impl<'a> DerefMut for dyn 'a + DyncastEq {
+	fn deref_mut(&mut self) -> &mut Self::Target {
+		self.as_dyncast_mut()
 	}
 }
 impl<'a> Debug for dyn 'a + DyncastEq {
@@ -349,14 +414,31 @@ impl<'a> Hash for dyn 'a + DyncastEq {
 
 /// [`DyncastEq`] and *dynamically* [`Ord`]
 //TODO: Other traits
-pub trait DyncastOrd: DyncastEq {
-	fn as_dyncast_eq(&self) -> &dyn DyncastEq;
+pub trait DyncastOrd: DyncastEq + Upcast<dyn DyncastEq> {
+	fn as_dyncast_eq<'a>(&self) -> &(dyn 'a + DyncastEq)
+	where
+		Self: 'a,
+	{
+		self.upcast()
+	}
+
+	fn as_dyncast_eq_mut<'a>(&mut self) -> &mut (dyn 'a + DyncastEq)
+	where
+		Self: 'a,
+	{
+		unsafe { mem::transmute::<&mut dyn DyncastEq, &mut dyn DyncastEq>(self.upcast_mut()) }
+	}
 }
 impl<'a> Deref for dyn 'a + DyncastOrd {
 	type Target = dyn 'a + DyncastEq;
 
 	fn deref(&self) -> &Self::Target {
-		unsafe { mem::transmute(self.as_dyncast_eq()) }
+		self.as_dyncast_eq()
+	}
+}
+impl<'a> DerefMut for dyn 'a + DyncastOrd {
+	fn deref_mut(&mut self) -> &mut Self::Target {
+		self.as_dyncast_eq_mut()
 	}
 }
 impl<'a> Debug for dyn 'a + DyncastOrd {
@@ -386,7 +468,7 @@ impl<'a> Ord for dyn 'a + DyncastOrd {
 	fn cmp(&self, other: &Self) -> Ordering {
 		self.dyncast::<dyn DynOrd>()
 		.expect("Expected `Self` to be *dynamically* `dyn PartialOrd<dyn DynOrd>` via `dyn DyncastOrd: Ord`")
-		.dyn_cmp(
+		.dyn_cmp(self,
 			other
 				.dyncast::<dyn DynOrd>()
 				.expect("Expected `other` to be *dynamically* `dyn PartialOrd<dyn DynOrd>` via `dyn DyncastOrd: Ord`")
