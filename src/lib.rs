@@ -54,46 +54,78 @@ use core::{
 #[cfg(feature = "macros")]
 pub use fruit_salad_proc_macro_definitions::{implement_dyncasts, Dyncast};
 
-impl dyn Dyncast {
+pub trait Limit<'a> {
+	type Limited: 'a + ?Sized;
+}
+impl<'a, T: 'a + ?Sized> Limit<'a> for T {
+	type Limited = T;
+}
+
+pub fn test<'a, T: 'static + ?Sized>(t: &'a <T as Limit<'_>>::Limited) -> &'a T {
+	t
+}
+
+impl<'a> dyn 'a + Dyncast {
 	#[allow(missing_docs)]
 	#[must_use]
-	pub fn dyncast<T: 'static + ?Sized>(&self) -> Option<&T> {
+	pub fn dyncast_<T: 'static + ?Sized>(&self) -> Option<&<T as Limit<'a>>::Limited> {
 		self.__dyncast(
 			unsafe { NonNull::new_unchecked(self as *const Self as *mut Self) }.cast(),
 			TypeId::of::<T>(),
 		)
-		.map(|pointer_data| unsafe { pointer_data.as_ptr().cast::<&T>().read_unaligned() })
+		.map(|pointer_data| unsafe {
+			#[allow(clippy::cast_ptr_alignment)] // Read unaligned.
+			pointer_data
+				.as_ptr()
+				.cast::<&<T as Limit<'a>>::Limited>()
+				.read_unaligned()
+		})
 	}
 
 	#[allow(missing_docs)]
 	#[must_use]
-	pub fn dyncast_mut<T: 'static + ?Sized>(&mut self) -> Option<&mut T> {
+	pub fn dyncast_mut_<T: 'static + ?Sized>(&mut self) -> Option<&mut <T as Limit<'a>>::Limited> {
 		let this = unsafe { NonNull::new_unchecked(self) };
 		self.__dyncast(this.cast(), TypeId::of::<T>())
-			.map(|pointer_data| unsafe { pointer_data.as_ptr().cast::<&mut T>().read_unaligned() })
+			.map(|pointer_data| unsafe {
+				pointer_data
+					.as_ptr()
+					.cast::<&mut <T as Limit<'a>>::Limited>()
+					.read_unaligned()
+			})
 	}
 
 	#[allow(missing_docs)]
 	#[must_use]
-	pub fn dyncast_pinned<T: 'static + ?Sized>(self: Pin<&Self>) -> Option<Pin<&T>> {
+	pub fn dyncast_pinned_<T: 'static + ?Sized>(
+		self: Pin<&Self>,
+	) -> Option<Pin<&<T as Limit<'a>>::Limited>> {
 		self.__dyncast(
 			unsafe { NonNull::new_unchecked(&*self as *const Self as *mut Self) }.cast(),
 			TypeId::of::<T>(),
 		)
-		.map(|pointer_data| unsafe { pointer_data.as_ptr().cast::<Pin<&T>>().read_unaligned() })
+		.map(|pointer_data| unsafe {
+			pointer_data
+				.as_ptr()
+				.cast::<Pin<&<T as Limit<'a>>::Limited>>()
+				.read_unaligned()
+		})
 	}
 
 	#[allow(missing_docs)]
 	#[must_use]
-	pub fn dyncast_pinned_mut<T: 'static + ?Sized>(
+	pub fn dyncast_pinned_mut_<T: 'static + ?Sized>(
 		mut self: Pin<&mut Self>,
-	) -> Option<Pin<&mut T>> {
+	) -> Option<Pin<&mut <T as Limit<'a>>::Limited>> {
 		let this = unsafe {
 			NonNull::new_unchecked(Pin::into_inner_unchecked(self.as_mut()) as *mut Self)
 		};
 		self.__dyncast(this.cast(), TypeId::of::<T>())
 			.map(|pointer_data| unsafe {
-				pointer_data.as_ptr().cast::<Pin<&mut T>>().read_unaligned()
+				pointer_data
+					.as_ptr()
+					.cast::<Pin<&mut <T as Limit<'a>>::Limited>>()
+					.read_unaligned()
 			})
 	}
 
@@ -102,10 +134,52 @@ impl dyn Dyncast {
 	/// See [`NonNull::as_ref`].
 	#[allow(missing_docs)]
 	#[must_use]
-	pub unsafe fn dyncast_ptr<T: 'static + ?Sized>(this: NonNull<Self>) -> Option<NonNull<T>> {
+	pub unsafe fn dyncast_ptr_<T: 'static + ?Sized>(
+		this: NonNull<Self>,
+	) -> Option<NonNull<<T as Limit<'a>>::Limited>> {
 		this.as_ref()
 			.__dyncast(this.cast(), TypeId::of::<T>())
-			.map(|pointer_data| pointer_data.as_ptr().cast::<NonNull<T>>().read_unaligned())
+			.map(|pointer_data| {
+				pointer_data
+					.as_ptr()
+					.cast::<NonNull<<T as Limit<'a>>::Limited>>()
+					.read_unaligned()
+			})
+	}
+}
+
+impl dyn Dyncast {
+	#[allow(missing_docs)]
+	#[must_use]
+	pub fn dyncast<T: 'static + ?Sized>(&self) -> Option<&T> {
+		self.dyncast_::<T>()
+	}
+
+	#[allow(missing_docs)]
+	#[must_use]
+	pub fn dyncast_mut<T: 'static + ?Sized>(&mut self) -> Option<&mut T> {
+		self.dyncast_mut_::<T>()
+	}
+
+	#[allow(missing_docs)]
+	#[must_use]
+	pub fn dyncast_pinned<T: 'static + ?Sized>(self: Pin<&Self>) -> Option<Pin<&T>> {
+		self.dyncast_pinned_::<T>()
+	}
+
+	#[allow(missing_docs)]
+	#[must_use]
+	pub fn dyncast_pinned_mut<T: 'static + ?Sized>(self: Pin<&mut Self>) -> Option<Pin<&mut T>> {
+		self.dyncast_pinned_mut_::<T>()
+	}
+
+	/// # Safety
+	///
+	/// See [`NonNull::as_ref`].
+	#[allow(missing_docs)]
+	#[must_use]
+	pub unsafe fn dyncast_ptr<T: 'static + ?Sized>(this: NonNull<Self>) -> Option<NonNull<T>> {
+		Self::dyncast_ptr_::<T>(this)
 	}
 }
 
@@ -188,11 +262,11 @@ pub unsafe trait Dyncast {
 	) -> Option<MaybeUninit<[u8; mem::size_of::<&dyn Dyncast>()]>>;
 }
 
-impl Debug for dyn Dyncast {
+impl<'a> Debug for dyn 'a + Dyncast {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		f.write_str("dyn Dyncast = ")?;
 		#[allow(clippy::option_if_let_else)] // Can't because `f`.
-		if let Some(debug) = self.dyncast::<dyn Debug>() {
+		if let Some(debug) = self.dyncast_::<dyn Debug>() {
 			debug.fmt(f)
 		} else {
 			f.write_str("!dyn Debug")
