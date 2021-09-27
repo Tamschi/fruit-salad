@@ -54,6 +54,17 @@ use core::{
 #[cfg(feature = "macros")]
 pub use fruit_salad_proc_macro_definitions::{implement_dyncasts, Dyncast};
 
+/// Limited-lifetime API. This could be safe in one or two ways:
+///
+/// 1. Grabbing the [`TypeId`] of non-`'static` types.
+///
+///   > This is impossible by design and I mostly agree with that.
+///   > It would probably encourage many unsound hacks.
+///
+/// 2. A way to statically derive a shortened object (not just reference!) lifetime from a `'static` one.
+///
+///   > This would solve the issue very nicely, but would definitely require at least a very magic core library function.
+///   > I hope it will eventually come to the language, nonetheless.
 impl<'a> dyn 'a + Dyncast {
 	/// # Safety
 	///
@@ -148,6 +159,11 @@ impl<'a> dyn 'a + Dyncast {
 	}
 }
 
+/// Safe `'static`-object dyncast API.
+///
+/// This can't be misused, but it will only work if the targeted instances are owned/`dyn 'static + Dyncast`.
+/// 
+/// > It does work on short-lived references to such trait objects, though.
 impl dyn Dyncast {
 	#[allow(missing_docs)]
 	#[must_use]
@@ -232,10 +248,12 @@ impl dyn Dyncast {
 ///
 /// Meaningful hashing requires that the underlying type be *dynamically* [`DynHash`].
 ///
-/// A blanked implementation is available for types that are [`Hash`],
-/// but you still need to enable dyncasts using `#[dyncast(dyn DynHash)]`.
+/// A blanket implementation is available for types that are [`Hash`],
+/// but you still need to enable matching dyncasts using `#[dyncast(dyn DynHash)]`.
 ///
-/// Types that are not dynamically [`DynHash`] hash dynamically by not hashing anything.
+/// Other types (that are not dynamically [`DynHash`]) hash dynamically by not hashing anything.
+/// 
+/// <!-- FIXME: It would be good to emit a warning for types that are hash but not dynamically DynHash, where possible. -->
 ///
 /// For convenience, you can enable dyncasts without importing [`DynHash`] by writing `#[dyncast(impl dyn DynHash)]`.
 ///
@@ -250,7 +268,7 @@ impl dyn Dyncast {
 ///
 /// > **Wishlist**
 /// >
-/// > - `self: NonNull<Self>` as receiver on object-safe `unsafe` trait methods.
+/// > - `self: NonNull<Self>` as receiver in object-safe `unsafe` trait methods.
 /// > - [#81513](https://github.com/rust-lang/rust/issues/81513) or similar.
 pub unsafe trait Dyncast {
 	#[allow(clippy::type_complexity)]
