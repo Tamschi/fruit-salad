@@ -162,7 +162,7 @@ impl<'a> dyn 'a + Dyncast {
 /// Safe `'static`-object dyncast API.
 ///
 /// This can't be misused, but it will only work if the targeted instances are owned/`dyn 'static + Dyncast`.
-/// 
+///
 /// > It does work on short-lived references to such trait objects, though.
 impl dyn Dyncast {
 	#[allow(missing_docs)]
@@ -252,7 +252,7 @@ impl dyn Dyncast {
 /// but you still need to enable matching dyncasts using `#[dyncast(dyn DynHash)]`.
 ///
 /// Other types (that are not dynamically [`DynHash`]) hash dynamically by not hashing anything.
-/// 
+///
 /// <!-- FIXME: It would be good to emit a warning for types that are hash but not dynamically DynHash, where possible. -->
 ///
 /// For convenience, you can enable dyncasts without importing [`DynHash`] by writing `#[dyncast(impl dyn DynHash)]`.
