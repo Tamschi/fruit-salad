@@ -32,6 +32,9 @@
 #![allow(clippy::semicolon_if_nothing_returned)]
 #![no_std]
 
+#[cfg(feature = "alloc")]
+extern crate alloc;
+
 #[cfg(feature = "std")]
 extern crate std;
 
@@ -72,6 +75,8 @@ impl<'a> dyn 'a + Dyncast {
 	/// # Safety
 	///
 	/// `TActual` and `TStatic` must be the same type except for lifetimes.
+	///
+	/// `TActual` must not be longer-lived than `Self`.
 	#[allow(missing_docs)]
 	#[must_use]
 	pub unsafe fn dyncast_<TActual: ?Sized, TStatic: 'static + ?Sized>(&self) -> Option<&TActual> {
@@ -88,6 +93,8 @@ impl<'a> dyn 'a + Dyncast {
 	/// # Safety
 	///
 	/// `TActual` and `TStatic` must be the same type except for lifetimes.
+	///
+	/// `TActual` must not be longer-lived than `Self`.
 	#[allow(missing_docs)]
 	#[must_use]
 	pub unsafe fn dyncast_mut_<TActual: ?Sized, TStatic: 'static + ?Sized>(
@@ -106,6 +113,8 @@ impl<'a> dyn 'a + Dyncast {
 	/// # Safety
 	///
 	/// `TActual` and `TStatic` must be the same type except for lifetimes.
+	///
+	/// `TActual` must not be longer-lived than `Self`.
 	#[allow(missing_docs)]
 	#[must_use]
 	pub unsafe fn dyncast_pinned_<TActual: ?Sized, TStatic: 'static + ?Sized>(
@@ -126,6 +135,8 @@ impl<'a> dyn 'a + Dyncast {
 	/// # Safety
 	///
 	/// `TActual` and `TStatic` must be the same type except for lifetimes.
+	///
+	/// `TActual` must not be longer-lived than `Self`.
 	#[allow(missing_docs)]
 	#[must_use]
 	pub unsafe fn dyncast_pinned_mut_<TActual: ?Sized, TStatic: 'static + ?Sized>(
@@ -146,6 +157,8 @@ impl<'a> dyn 'a + Dyncast {
 	/// See [`NonNull::as_ref`].
 	///
 	/// Additionally, `TActual` and `TStatic` must be the same type except for lifetimes.
+	///
+	/// `TActual` must not be longer-lived than `Self`.
 	#[allow(missing_docs)]
 	#[must_use]
 	pub unsafe fn dyncast_ptr_<TActual: ?Sized, TStatic: 'static + ?Sized>(
@@ -159,6 +172,46 @@ impl<'a> dyn 'a + Dyncast {
 					.cast::<NonNull<TActual>>()
 					.read_unaligned()
 			})
+	}
+
+	/// # Safety
+	///
+	/// `TActual` and `TStatic` must be the same type except for lifetimes.
+	///
+	/// `TActual` must not be longer-lived than `Self`.
+	///
+	/// # Errors
+	///
+	/// Iff the cast fails, the original [`Box`](`alloc::boxed::Box`) is restored.
+	#[allow(missing_docs)]
+	#[cfg(feature = "alloc")]
+	pub unsafe fn dyncast_box_<TActual: ?Sized, TStatic: 'static + ?Sized>(
+		self: alloc::boxed::Box<Self>,
+	) -> Result<alloc::boxed::Box<TActual>, alloc::boxed::Box<Self>> {
+		use alloc::boxed::Box;
+
+		let leaked = Box::into_raw(self);
+
+		(&*leaked)
+			.__dyncast(
+				NonNull::new_unchecked(leaked).cast(),
+				TypeId::of::<TStatic>(),
+			)
+			.map(|pointer_data| {
+				#[allow(clippy::cast_ptr_alignment)] // Read unaligned.
+				Box::from_raw(
+					pointer_data
+						.as_ptr()
+						.cast::<*mut TActual>()
+						.read_unaligned(),
+				)
+			})
+			.ok_or_else(|| Box::from_raw(leaked))
+
+		// Normally there should be a bit of error handling here to prevent leaks in cases where `.__dyncast` panics,
+		// but since this crate fully controls that implementation, we can assume that just never happens in a meaningful way.
+		//
+		// There might still be panics if the caller violates a safety contract somehow, but in that case all bets are off anyway.
 	}
 }
 
@@ -199,6 +252,17 @@ impl dyn Dyncast {
 	#[must_use]
 	pub unsafe fn dyncast_ptr<T: 'static + ?Sized>(this: NonNull<Self>) -> Option<NonNull<T>> {
 		Self::dyncast_ptr_::<T, T>(this)
+	}
+
+	/// # Errors
+	///
+	/// Iff the cast fails, the original [`Box`](`alloc::boxed::Box`) is restored.
+	#[allow(missing_docs)]
+	#[cfg(feature = "alloc")]
+	pub fn dyncast_box<T: 'static + ?Sized>(
+		self: alloc::boxed::Box<Self>,
+	) -> Result<alloc::boxed::Box<T>, alloc::boxed::Box<Self>> {
+		unsafe { self.dyncast_box_::<T, T>() }
 	}
 }
 
@@ -274,8 +338,60 @@ impl dyn Dyncast {
 /// > - `self: NonNull<Self>` as receiver in object-safe `unsafe` trait methods.
 /// > - [#81513](https://github.com/rust-lang/rust/issues/81513) or similar.
 pub unsafe trait Dyncast {
-	#[allow(clippy::type_complexity)]
+	/// This likely warrants a bit of an explanation,
+	/// even though it's really not part of the public API,
+	/// and the main purpose of this crate is to *stop* API consumers from
+	/// wasting their time with navigating this mess on their end/in their code.
+	///
+	/// I'll put in here for the curious, everyone else will just see the trait docs only.
 	#[doc(hidden)]
+	///
+	/// In short, what you're looking at is a sort of focal point of some shortcomings
+	/// that Rust currently has with regards to dynamic dispatch, as there are many
+	/// limitations to object-safety that aren't necessarily technical in nature.
+	///
+	/// (I'm not saying they really NEED to be fixed with a high priority though,
+	/// since for the most part each workaround is simple enough by itself and
+	/// shouldn't produce all too much overhead.)
+	///
+	/// First off, this method uses pointers because each of the six variations
+	/// of reference used (shared, mutable, pinned shared, pinned mutable,
+	/// [`NonNull`] and [`Box`](`alloc::boxed::Box`)) requires the exact same operations.
+	/// By only using this one method, there may be a significant reduction in text size if
+	/// many concrete types are dyncast-enabled.
+	///
+	/// > [`Box`](`alloc::boxed::Box`)es aren't punned directly of course,
+	/// but converted using their API functions in the relevant shim.
+	///
+	/// In any case, pointers are unfortunately not valid receivers,
+	/// which is one reason there is a `this` parameters here.
+	///
+	/// The other reason is that even object-safety is quite picky about `Self`
+	/// appearing in arguments. `this` must be the raw address `NonNull<()>`
+	/// due to that limitation. Hopefully both will change in time.
+	///
+	/// The `target` parameter is provided as `TypeId` because a generic
+	/// type argument would make the method not object-safe.
+	///
+	/// Similarly, it's unknown which memory layout the resulting pointer will have.
+	/// The size of `&dyn Dyncast` is assumed to be enough to store it, but this is also
+	/// validated statically in the generated implementation(s) of this method.
+	///
+	/// The return memory (interpreted as pointer) is also considered to be immediately unaligned
+	/// (while its pointee must be aligned), so unaligned writes and reads are used just around
+	/// where that's returned.
+	/// There may be a better method to do this. If you know one,
+	/// please don't hesitate to contact me/the project about it!
+	///
+	/// # Implementation
+	///
+	/// This method's implementations are generated is as long if-else chains, each
+	/// with one branch for each dyncast target plus one default returning [`None`].
+	///
+	/// The [`TypeId`] given as `target` is compared with ones baked into the function,
+	/// and if there's a match, the pointer is converted to the target type (widening it if
+	/// necessary) and then returned not-further-modified within the allotted memory.
+	#[allow(clippy::type_complexity)]
 	fn __dyncast(
 		&self,
 		this: NonNull<()>,

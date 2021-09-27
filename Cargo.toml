@@ -36,9 +36,10 @@ is-it-maintained-open-issues = { repository = "Tamschi/fruit-salad" }
 maintenance = { status = "experimental" } # This may differ between branches.
 
 [features]
+alloc = []
 default = ["std"]
 macros = ["fruit-salad_proc-macro-definitions"]
-std = []
+std = ["alloc"]
 
 [dependencies]
 fruit-salad_proc-macro-definitions = { version = "0.0.1", path = "proc-macro-definitions", optional = true }
