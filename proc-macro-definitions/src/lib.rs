@@ -18,6 +18,7 @@ use syn::{
 	parse::{Parse, ParseStream},
 	parse_macro_input,
 	punctuated::Punctuated,
+	spanned::Spanned,
 	visit_mut::{self, VisitMut},
 	Attribute, Error, Generics, Ident, Item, Lifetime, PredicateType, Result, Token, Type,
 	TypeParamBound, WhereClause, WherePredicate,
@@ -62,6 +63,8 @@ fn implement_dyncast(
 			.collect()
 	};
 
+	let has_self_generics = !generics.params.is_empty();
+
 	let (impl_generics, type_generics, where_clause) = generics.split_for_impl();
 
 	let where_clause = {
@@ -86,7 +89,7 @@ fn implement_dyncast(
 		Some(where_clause)
 	};
 
-	let (target_errors, mut targets): (Vec<_>, Vec<Type>) = attributes
+	let target_branches = attributes
 		.iter()
 		.filter(|attribute| {
 			attribute.path.is_ident("dyncast")
@@ -117,41 +120,76 @@ fn implement_dyncast(
 		.unwrap(/*FIXME: Fail better! */)
 		.into_iter()
 		.flatten()
-		.map(|dyncast_target| (dyncast_target.diagnostics(), dyncast_target.type_))
-		.unzip();
+		.map(|dyncast_target| {
+			let diagnostics = dyncast_target.diagnostics();
+			let type_ = dyncast_target.type_;
 
-	// This is required for the const assertion.
-	for target in &mut targets {
-		struct SelfReplacer {
-			replacement: Type,
-		}
-		impl VisitMut for SelfReplacer {
-			fn visit_type_mut(&mut self, t: &mut Type) {
-				if is_self_type(t) {
-					*t = self.replacement.clone()
-				} else {
-					visit_mut::visit_type_mut(self, t)
+			let mut assertion_type = type_.clone();
+			let mut contains_self = false;
+			{
+				struct SelfReplacer<'a> {
+					replacement: Type,
+					contains_self: &'a mut bool,
 				}
-			}
-		}
+				impl VisitMut for SelfReplacer<'_> {
+					fn visit_type_mut(&mut self, t: &mut Type) {
+						if is_self_type(t) {
+							*self.contains_self = true;
+							*t = self.replacement.clone()
+						} else {
+							visit_mut::visit_type_mut(self, t)
+						}
+					}
+				}
 
-		SelfReplacer {
-			replacement: call2_strict(
-				quote_spanned!(Span::mixed_site()=> #dyn_ #ident#type_generics),
-				Type::parse,
-			)
-			.debugless_unwrap()
-			.unwrap(),
-		}
-		.visit_type_mut(target);
-	}
+				SelfReplacer {
+					contains_self: &mut contains_self,
+					replacement: call2_strict(
+						quote_spanned!(Span::mixed_site()=> #dyn_ #ident#type_generics),
+						Type::parse,
+					)
+					.debugless_unwrap()
+					.unwrap(),
+				}
+				.visit_type_mut(&mut assertion_type);
+			}
+
+			let pointer_size_assertion = if contains_self && has_self_generics {
+				// Generic type parameters of `Self` cannot be used in the assertion.
+				quote_spanned! {type_.span().resolved_at(Span::mixed_site())=>
+					::#fruit_salad::__::const_assert!(::core::mem::size_of::<*mut ()>() <= ::core::mem::size_of::<&dyn Dyncast>());
+				}
+			} else {
+				quote_spanned! {type_.span().resolved_at(Span::mixed_site())=>
+					::#fruit_salad::__::const_assert!(::core::mem::size_of::<*mut #assertion_type>() <= ::core::mem::size_of::<&dyn Dyncast>());
+				}
+			};
+
+
+			let branch = quote_spanned! {type_.span().resolved_at(Span::mixed_site())=> if target == ::std::any::TypeId::of::<#type_>() {
+				#diagnostics
+				#pointer_size_assertion;
+				::core::option::Option::Some(unsafe {
+					let mut result_memory = ::core::mem::MaybeUninit::<[u8; ::core::mem::size_of::<&dyn Dyncast>()]>::uninit();
+					result_memory
+						.as_mut_ptr()
+						.cast::<::core::ptr::NonNull<#type_>>()
+						.write_unaligned(::core::ptr::NonNull::<#type_>::new_unchecked(
+							this.cast::<Self>().as_ptr() as *mut #type_
+						)
+					);
+					result_memory
+				})
+			} else};
+			branch
+		}).collect::<Vec<_>>();
 
 	quote_spanned! {Span::mixed_site()=>
 		#(#attribute_errors)*
 
 		/// # Targets
 		///
-		#(#[doc = concat!("- `", stringify!(#targets), "`")])*
+		#(#[doc = concat!("- `", stringify!(#target_branches), "`")])*
 		unsafe impl#impl_generics ::#fruit_salad::Dyncast for #dyn_ #ident#type_generics
 			#where_clause
 		{
@@ -164,21 +202,7 @@ fn implement_dyncast(
 					[::core::primitive::u8; ::core::mem::size_of::<&dyn ::#fruit_salad::Dyncast>()]
 				>
 			> {
-				#(if target == ::std::any::TypeId::of::<#targets>() {
-					#target_errors
-					::#fruit_salad::__::const_assert!(::core::mem::size_of::<*mut #targets>() <= ::core::mem::size_of::<&dyn Dyncast>());
-					::core::option::Option::Some(unsafe {
-						let mut result_memory = ::core::mem::MaybeUninit::<[u8; ::core::mem::size_of::<&dyn Dyncast>()]>::uninit();
-						result_memory
-							.as_mut_ptr()
-							.cast::<::core::ptr::NonNull<#targets>>()
-							.write_unaligned(::core::ptr::NonNull::<#targets>::new_unchecked(
-								this.cast::<Self>().as_ptr() as *mut #targets
-							)
-						);
-						result_memory
-					})
-				} else)* {
+				#(#target_branches)* {
 					None
 				}
 			}
@@ -215,7 +239,7 @@ impl DyncastTarget {
 		} else if self.unsafe_.is_some()
 			&& (matches!(&self.type_, Type::TraitObject(_)) || is_self_type(&self.type_))
 		{
-			// Causes an "unneessary unsafe block" style warning.
+			// Causes an "unnecessary unsafe block" style warning.
 			let unsafe_ = self.unsafe_.as_ref().unwrap();
 			quote_spanned!(unsafe_.span=> #unsafe_ {})
 		} else {
