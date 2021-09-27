@@ -65,6 +65,9 @@ pub use fruit_salad_proc_macro_definitions::{implement_dyncasts, Dyncast};
 ///
 ///   > This would solve the issue very nicely, but would definitely require at least a very magic core library function.
 ///   > I hope it will eventually come to the language, nonetheless.
+///
+/// If either of these possibilities landed, the safe API's coverage could be expanded to (most of) this unsafe one's use cases,
+/// and this unsafe API's methods could be deprecated in bulk.
 impl<'a> dyn 'a + Dyncast {
 	/// # Safety
 	///
