@@ -11,7 +11,7 @@ use lazy_static::lazy_static;
 use proc_macro::TokenStream as TokenStream1;
 use proc_macro2::{Span, TokenStream as TokenStream2};
 use proc_macro_crate::{crate_name, FoundCrate};
-use quote::{quote_spanned, ToTokens};
+use quote::{quote, quote_spanned, ToTokens};
 use std::ops::Deref;
 use syn::{
 	parenthesized,
@@ -24,6 +24,21 @@ use syn::{
 	TypeParamBound, WhereClause, WherePredicate,
 };
 use tap::Pipe;
+use unquote::unquote;
+
+macro_rules! tokens_eq {
+	($input:expr, $($tt:tt)*) => {
+		(call2_strict($input.clone(), |input| {
+			unquote!(input, $($tt)*);
+			Ok(())
+		})
+		.ok()
+		.transpose()
+		.ok()
+		.flatten()
+		.is_some())
+	};
+}
 
 /// Implements `Dyncast` for an enum, struct, trait, trait alias, type alias or union.
 ///
@@ -89,6 +104,10 @@ fn implement_dyncast(
 		Some(where_clause)
 	};
 
+	let mut extra_impls: Vec<ExtraImplementation> = vec![];
+	let mut require_self_downcast: Vec<Span> = vec![];
+	let mut has_self_downcast: bool = false;
+
 	let target_branches = attributes
 		.iter()
 		.filter(|attribute| {
@@ -121,8 +140,14 @@ fn implement_dyncast(
 		.into_iter()
 		.flatten()
 		.map(|dyncast_target| {
+
+			if tokens_eq!(dyncast_target.type_.to_token_stream(), Self) {
+				has_self_downcast = true;
+			}
+
 			let diagnostics = dyncast_target.diagnostics();
-			let type_ = dyncast_target.type_;
+
+			let type_ = implement_dyncast_target(dyncast_target, &mut extra_impls, &mut require_self_downcast);
 
 			let mut assertion_type = type_.clone();
 			let mut contains_self = false;
@@ -184,6 +209,25 @@ fn implement_dyncast(
 			branch
 		}).collect::<Vec<_>>();
 
+	let extra_impls = extra_impls
+		.into_iter()
+		.map(|ExtraImplementation { unsafe_, what, how }| {
+			quote_spanned! {what.span()=>
+			#unsafe_ impl#impl_generics #what for #dyn_ #ident#type_generics
+				#where_clause
+				{
+					#how
+				}
+			}
+		});
+
+	if has_self_downcast {
+		require_self_downcast.clear()
+	}
+	let require_self_downcast = require_self_downcast
+		.into_iter()
+		.map(|span| quote_spanned!(span=> ::core::compile_error!("`Self`-dyncast required by this. Add `#[dyncast(Self)]`");));
+
 	quote_spanned! {Span::mixed_site()=>
 		#(#attribute_errors)*
 
@@ -207,6 +251,79 @@ fn implement_dyncast(
 				}
 			}
 		}
+
+		#(#extra_impls)*
+		#(#require_self_downcast)*
+	}
+}
+
+struct ExtraImplementation {
+	unsafe_: Option<Token![unsafe]>,
+	what: Type,
+	how: TokenStream2,
+}
+
+fn implement_dyncast_target(
+	dyncast_target: DyncastTarget,
+	extra_impls: &mut Vec<ExtraImplementation>,
+	require_self_downcast: &mut Vec<Span>,
+) -> Type {
+	let impl_ = if let Some(impl_) = dyncast_target.impl_ {
+		impl_
+	} else {
+		return dyncast_target.type_;
+	};
+
+	let type_ = dyncast_target.type_.to_token_stream();
+
+	if tokens_eq!(type_, dyn PartialEq<dyn Dyncast>) {
+		extra_impls.push(ExtraImplementation {
+			unsafe_: None,
+			what: call2_strict(
+				quote_spanned! {impl_.span=>
+					::core::cmp::PartialEq::<dyn ::fruit_salad::Dyncast>
+				},
+				Type::parse,
+			)
+			.unwrap()
+			.unwrap(),
+			how: quote_spanned! {impl_.span=>
+				fn eq(&self, other: &(dyn 'static + ::fruit_salad::Dyncast)) -> bool {
+					if let Some(other) = other.dyncast::<Self>() {
+						::core::cmp::PartialEq::<Self>::eq(self, other)
+					} else {
+						false
+					}
+				}
+			},
+		});
+		require_self_downcast.push(impl_.span);
+		call2_strict(
+			quote_spanned! {type_.span()=>
+				dyn ::core::cmp::PartialEq::<dyn ::fruit_salad::Dyncast>
+			},
+			Type::parse,
+		)
+		.unwrap()
+		.unwrap()
+	} else {
+		Error::new_spanned(
+			&type_,
+			format_args!(
+				"Unknown type for generated implementation: `{}`
+Expected one of:
+    - `dyn PartialEq<dyn Dyncast>`",
+				type_
+			),
+		)
+		.pipe(|error| {
+			extra_impls.push(ExtraImplementation {
+				unsafe_: dyncast_target.unsafe_,
+				what: dyncast_target.type_.clone(),
+				how: error.into_compile_error(),
+			})
+		});
+		dyncast_target.type_
 	}
 }
 

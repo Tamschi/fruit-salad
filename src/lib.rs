@@ -377,16 +377,15 @@ pub unsafe trait Dyncast {
 	/// The size of `&dyn Dyncast` is assumed to be enough to store it, but this is also
 	/// validated statically in the generated implementation(s) of this method.
 	///
-	/// The return memory (interpreted as pointer) is also considered to be immediately unaligned
-	/// (while its pointee must be aligned), so unaligned writes and reads are used just around
-	/// where that's returned.
+	/// The return memory (interpreted as pointer) is also considered to be unaligned for its contents
+	/// (while the eventual pointee instance must be aligned), so unaligned writes and reads are used for it.
 	/// There may be a better method to do this. If you know one,
 	/// please don't hesitate to contact me/the project about it!
 	///
 	/// # Implementation
 	///
 	/// This method's implementations are generated is as long if-else chains, each
-	/// with one branch for each dyncast target plus one default returning [`None`].
+	/// with one branch for each dyncast target plus one default branch returning [`None`].
 	///
 	/// The [`TypeId`] given as `target` is compared with ones baked into the function,
 	/// and if there's a match, the pointer is converted to the target type (widening it if
