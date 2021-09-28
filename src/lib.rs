@@ -84,7 +84,7 @@ impl<'a> dyn 'a + Dyncast {
 			NonNull::new_unchecked(self as *const Self as *mut Self).cast(),
 			TypeId::of::<TStatic>(),
 		)
-		.map(|pointer_data| unsafe {
+		.map(|pointer_data| {
 			#[allow(clippy::cast_ptr_alignment)] // Read unaligned.
 			pointer_data.as_ptr().cast::<&TActual>().read_unaligned()
 		})
@@ -102,7 +102,7 @@ impl<'a> dyn 'a + Dyncast {
 	) -> Option<&mut TActual> {
 		let this = NonNull::new_unchecked(self);
 		self.__dyncast(this.cast(), TypeId::of::<TStatic>())
-			.map(|pointer_data| unsafe {
+			.map(|pointer_data| {
 				pointer_data
 					.as_ptr()
 					.cast::<&mut TActual>()
@@ -124,7 +124,7 @@ impl<'a> dyn 'a + Dyncast {
 			NonNull::new_unchecked(&*self as *const Self as *mut Self).cast(),
 			TypeId::of::<TStatic>(),
 		)
-		.map(|pointer_data| unsafe {
+		.map(|pointer_data| {
 			pointer_data
 				.as_ptr()
 				.cast::<Pin<&TActual>>()
@@ -144,7 +144,7 @@ impl<'a> dyn 'a + Dyncast {
 	) -> Option<Pin<&mut TActual>> {
 		let this = NonNull::new_unchecked(Pin::into_inner_unchecked(self.as_mut()) as *mut Self);
 		self.__dyncast(this.cast(), TypeId::of::<TStatic>())
-			.map(|pointer_data| unsafe {
+			.map(|pointer_data| {
 				pointer_data
 					.as_ptr()
 					.cast::<Pin<&mut TActual>>()
