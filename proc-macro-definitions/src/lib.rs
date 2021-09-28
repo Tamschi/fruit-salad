@@ -276,19 +276,21 @@ fn implement_dyncast_target(
 
 	let type_ = dyncast_target.type_.to_token_stream();
 
+	let fruit_salad = fruit_salad_ident(Span::mixed_site());
+
 	if tokens_eq!(type_, dyn PartialEq<dyn Dyncast>) {
 		extra_impls.push(ExtraImplementation {
 			unsafe_: None,
 			what: call2_strict(
 				quote_spanned! {impl_.span=>
-					::core::cmp::PartialEq::<dyn ::fruit_salad::Dyncast>
+					::core::cmp::PartialEq::<dyn ::#fruit_salad::Dyncast>
 				},
 				Type::parse,
 			)
 			.unwrap()
 			.unwrap(),
 			how: quote_spanned! {impl_.span=>
-				fn eq(&self, other: &(dyn 'static + ::fruit_salad::Dyncast)) -> bool {
+				fn eq(&self, other: &(dyn 'static + ::#fruit_salad::Dyncast)) -> bool {
 					if let Some(other) = other.dyncast::<Self>() {
 						::core::cmp::PartialEq::<Self>::eq(self, other)
 					} else {
@@ -300,7 +302,40 @@ fn implement_dyncast_target(
 		require_self_downcast.push(impl_.span);
 		call2_strict(
 			quote_spanned! {type_.span()=>
-				dyn ::core::cmp::PartialEq::<dyn ::fruit_salad::Dyncast>
+				dyn ::core::cmp::PartialEq::<dyn ::#fruit_salad::Dyncast>
+			},
+			Type::parse,
+		)
+		.unwrap()
+		.unwrap()
+	} else if tokens_eq!(type_, dyn PartialOrd<dyn Dyncast>) {
+		extra_impls.push(ExtraImplementation {
+			unsafe_: None,
+			what: call2_strict(
+				quote_spanned! {impl_.span=>
+					::core::cmp::PartialOrd::<dyn ::#fruit_salad::Dyncast>
+				},
+				Type::parse,
+			)
+			.unwrap()
+			.unwrap(),
+			how: quote_spanned! {impl_.span=>
+				fn partial_cmp(
+					&self,
+					other: &(dyn 'static + ::#fruit_salad::Dyncast)
+				) -> ::core::option::Option<::core::cmp::Ordering> {
+					if let Some(other) = other.dyncast::<Self>() {
+						::core::cmp::PartialOrd::<Self>::partial_cmp(self, other)
+					} else {
+						None
+					}
+				}
+			},
+		});
+		require_self_downcast.push(impl_.span);
+		call2_strict(
+			quote_spanned! {type_.span()=>
+				dyn ::core::cmp::PartialEq::<dyn ::#fruit_salad::Dyncast>
 			},
 			Type::parse,
 		)

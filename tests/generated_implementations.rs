@@ -6,8 +6,8 @@ use fruit_salad::Dyncast;
 #[dyncast(Self, impl dyn PartialEq<dyn Dyncast>)]
 struct Struct;
 
-#[derive(PartialEq, Dyncast)]
-#[dyncast(impl dyn PartialEq<dyn Dyncast>, Self)]
+#[derive(PartialEq, PartialOrd, Dyncast)]
+#[dyncast(impl dyn PartialEq<dyn Dyncast>, Self, impl dyn PartialOrd<dyn Dyncast>)]
 struct Struct2;
 
 #[test]

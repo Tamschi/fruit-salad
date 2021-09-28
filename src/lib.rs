@@ -26,6 +26,73 @@
 //! ```rust
 //! // TODO_EXAMPLE
 //! ```
+//!
+//! # ☡ Potential Trip-ups
+//!
+//! While containing a safe API that covers many use-cases, this is still a *runtime* casting crate.
+//! Meaning that whether a cast will succeed can't be checked at compile-time for the most part.
+//!
+//! When you derive [`Dyncast`], you really need to announce each dyncast target type with the `#[dyncast(Type)]` attribute.
+//!
+//! > It's variadic, stacks and mostly allows repeats, so that's quite flexible.
+//! > However, repeat types currently aren't explicitly deduplicated.
+//!
+//! You can use `Self` as shorthand for the current type, which also works with generics,
+//! but limits the generated [`Dyncast`] implementation by `where Self: 'static`.
+//!
+//! ## Dynamic formatting
+//!
+//! Values will be formatted as `dyn Dyncast = !dyn Debug` or `dyn Dyncast = !dyn Display`
+//! if they are not *dynamically* [`Debug`] or not *dynamically* [`Display`], respectively.
+//!
+//! Add `#[dyncast(dyn Debug)]` and/or `#[dyncast(dyn Display)]` where you derive or implement this trait.
+//!
+//! ## Partial comparisons
+//!
+//! [`dyn Dyncast`](`Dyncast`) trait object comparisons through [`PartialEq`] and [`PartialOrd`] will always return [`false`] or [`None`] (respectively)
+//! unless at least one of the underlying types is *dynamically* [`PartialEq<dyn Dyncast>`] or *dynamically* [`PartialOrd<dyn Dyncast>`], respectively.
+//!
+//! > These implementations should mirror each other if both are available.
+//!
+//! You can write `#[dyncast(impl dyn PartialEq<dyn Dyncast>)]` and `#[dyncast(impl dyn PartialOrd<dyn Dyncast>)]` to
+//! generate implementations for these, respectively based on the plain [`PartialEq`] and [`PartialOrd`] implementations.
+//!
+//! Comparisons between distinct types will always result in [`false`] or [`None`] with the generated implementations.
+//!
+//! ## Complete comparisons
+//!
+//! [`Dyncast`] alone never exposes complete comparisons without explicit dyncast.
+//!
+//! However, the following subtraits are available for more completely comparable values:
+//!
+//! - [`DyncastEq`], which is also [`Deref<Target = dyn Dyncast>`](`Deref`), and
+//! - [`DyncastOrd`], which is also [`Deref<Target = dyn DyncastEq>`](`Deref`).
+//!
+//! Additionally, [`DynOrd`] is an object-safe version of [`Ord`] and can be generated,
+//! conditional on `Self` being [`Ord`] and [`Any`].
+//!
+//! > That's simplified a bit, but close enough.
+//!
+//! [`DyncastEq`] and [`DyncastOrd`] can both be implemented manually.
+//!
+//! A [`DyncastEq`] implementation is generated implicitly iff you write `#[dyncast(impl dyn PartialEq<dyn Dyncast>)]`,
+//! conditional on `Self` being [`Eq`].
+//!
+//! A [`DyncastOrd`] implementation is generated implicitly iff you write `#[dyncast(impl dyn PartialOrd<dyn Dyncast>, impl dyn DynOrd)]`,
+//! conditional on `Self` being [`DyncastEq`], [`Ord`] and [`Any`].
+//!
+//! ## Hashing
+//!
+//! Meaningful hashing requires that the underlying type be *dynamically* [`DynHash`].
+//!
+//! A blanket implementation is available for types that are [`Hash`],
+//! but you still need to enable matching dyncasts using `#[dyncast(dyn DynHash)]`.
+//!
+//! Other types (that are not dynamically [`DynHash`]) hash dynamically by not hashing anything.
+//!
+//! <!-- FIXME: It would be good to emit a warning for types that are hash but not dynamically DynHash, where possible. -->
+//!
+//! For convenience, you can enable dyncasts without importing [`DynHash`] by writing `#[dyncast(impl dyn DynHash)]`.
 
 #![doc(html_root_url = "https://docs.rs/fruit-salad/0.0.1")]
 #![warn(clippy::pedantic)]
@@ -268,62 +335,6 @@ impl dyn Dyncast {
 
 /// Reference downcasting, also to pinned trait objects.
 ///
-/// # ☡ Potential Trip-ups
-///
-/// ## Dynamic formatting
-///
-/// Values will be formatted as `dyn Dyncast = !dyn Debug` or `dyn Dyncast = !dyn Display`
-/// if they are not *dynamically* [`Debug`] or not *dynamically* [`Display`], respectively.
-///
-/// Add `#[dyncast(dyn Debug)]` and/or `#[dyncast(dyn Display)]` where you derive or implement this trait.
-///
-/// ## Partial comparisons
-///
-/// [`dyn Dyncast`](`Dyncast`) trait object comparisons through [`PartialEq`] and [`PartialOrd`] will always return [`false`] or [`None`] (respectively)
-/// unless at least one of the underlying types is *dynamically* [`PartialEq<dyn Dyncast>`] or *dynamically* [`PartialOrd<dyn Dyncast>`], respectively.
-///
-/// > These implementations should mirror each other if both are available.
-///
-/// You can write `#[dyncast(impl dyn PartialEq<dyn Dyncast>)]` and `#[dyncast(impl dyn PartialOrd<dyn Dyncast>)]` to
-/// generate implementations for these, respectively based on the plain [`PartialEq`] and [`PartialOrd`] implementations.
-///
-/// Comparisons between distinct types will always result in [`false`] or [`None`] with the generated implementations.
-///
-/// ## Complete comparisons
-///
-/// [`Dyncast`] alone never exposes complete comparisons without explicit dyncast.
-///
-/// However, the following subtraits are available for more completely comparable values:
-///
-/// - [`DyncastEq`], which is also [`Deref<Target = dyn Dyncast>`](`Deref`), and
-/// - [`DyncastOrd`], which is also [`Deref<Target = dyn DyncastEq>`](`Deref`).
-///
-/// Additionally, [`DynOrd`] is an object-safe version of [`Ord`] and can be generated,
-/// conditional on `Self` being [`Ord`] and [`Any`].
-///
-/// > That's simplified a bit, but close enough.
-///
-/// [`DyncastEq`] and [`DyncastOrd`] can both be implemented manually.
-///
-/// A [`DyncastEq`] implementation is generated implicitly iff you write `#[dyncast(impl dyn PartialEq<dyn Dyncast>)]`,
-/// conditional on `Self` being [`Eq`].
-///
-/// A [`DyncastOrd`] implementation is generated implicitly iff you write `#[dyncast(impl dyn PartialOrd<dyn Dyncast>, impl dyn DynOrd)]`,
-/// conditional on `Self` being [`DyncastEq`], [`Ord`] and [`Any`].
-///
-/// ## Hashing
-///
-/// Meaningful hashing requires that the underlying type be *dynamically* [`DynHash`].
-///
-/// A blanket implementation is available for types that are [`Hash`],
-/// but you still need to enable matching dyncasts using `#[dyncast(dyn DynHash)]`.
-///
-/// Other types (that are not dynamically [`DynHash`]) hash dynamically by not hashing anything.
-///
-/// <!-- FIXME: It would be good to emit a warning for types that are hash but not dynamically DynHash, where possible. -->
-///
-/// For convenience, you can enable dyncasts without importing [`DynHash`] by writing `#[dyncast(impl dyn DynHash)]`.
-///
 /// # ☡ Cognitohazard Warning ☡
 ///
 /// There is Generally Not Neat code here.
@@ -483,34 +494,31 @@ impl<'a> Hash for dyn 'a + Dyncast {
 	}
 }
 
-/// Object-safe [`Ord`].
+/// `not that useful yet` Object-safe [`Ord`].
 ///
 /// Where possible, prefer [`DyncastOrd`] over manually [`dyncast`](`<dyn Dyncast>::dyncast`)ing to [`dyn DynOrd`].
 pub unsafe trait DynOrd {
 	fn concrete_type_id(&self) -> TypeId;
 
-	/// # Safety:
-	///
-	/// `this` must point to the same instance as `self`.
 	fn dyn_cmp(&self, other: &dyn DynOrd) -> Ordering;
 }
 
 ///TODO: This should be an explicitly generated implementation, instead.
-unsafe impl<T> DynOrd for T
-where
-	T: Ord + Any,
-{
-	fn concrete_type_id(&self) -> TypeId {
-		self.type_id()
-	}
+// unsafe impl<T> DynOrd for T
+// where
+// 	T: Ord + Any,
+// {
+// 	fn concrete_type_id(&self) -> TypeId {
+// 		self.type_id()
+// 	}
 
-	fn dyn_cmp(&self, other: &dyn DynOrd) -> Ordering {
-		match self.concrete_type_id().cmp(&other.concrete_type_id()) {
-			Ordering::Equal => self.cmp(unsafe { &*(other as *const dyn DynOrd).cast::<Self>() }),
-			not_equal => not_equal,
-		}
-	}
-}
+// 	fn dyn_cmp(&self, other: &dyn DynOrd) -> Ordering {
+// 		match self.concrete_type_id().cmp(&other.concrete_type_id()) {
+// 			Ordering::Equal => self.cmp(unsafe { &*(other as *const dyn DynOrd).cast::<Self>() }),
+// 			not_equal => not_equal,
+// 		}
+// 	}
+// }
 impl<'a> PartialEq<dyn 'a + DynOrd> for dyn 'a + DynOrd {
 	fn eq(&self, other: &Self) -> bool {
 		self.dyn_cmp(other) == Ordering::Equal
@@ -565,7 +573,7 @@ mod private {
 }
 use private::Upcast;
 
-/// [`Dyncast`] and *dynamically* [`Eq`]
+/// `not that useful yet` [`Dyncast`] and *dynamically* [`Eq`]
 //TODO: Other traits
 pub trait DyncastEq: Dyncast + for<'a> Upcast<dyn 'a + Dyncast> {
 	fn as_dyncast<'a>(&self) -> &(dyn 'a + Dyncast)
@@ -618,7 +626,7 @@ impl<'a> Hash for dyn 'a + DyncastEq {
 	}
 }
 
-/// [`DyncastEq`] and *dynamically* [`Ord`]
+/// `not that useful yet` [`DyncastEq`] and *dynamically* [`Ord`]
 //TODO: Other traits
 pub trait DyncastOrd: DyncastEq + for<'a> Upcast<dyn 'a + DyncastEq> {
 	fn as_dyncast_eq<'a>(&self) -> &(dyn 'a + DyncastEq)
