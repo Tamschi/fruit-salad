@@ -15,7 +15,7 @@
 
 [![crev reviews](https://web.crev.dev/rust-reviews/badge/crev_count/fruit-salad.svg)](https://web.crev.dev/rust-reviews/crate/fruit-salad/)
 
-This is a (mostly) trait object **reference** casting and comparison crate.
+This is a (mostly) trait object casting and comparison crate.
 
 There is no registry, instead targets are engraved directly into the `Dyncast` trait implementation by a derive macro.
 
