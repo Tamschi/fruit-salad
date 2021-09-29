@@ -101,7 +101,7 @@
 //! > That's simplified a bit, but close enough.
 //!
 //! [`DyncastEq`] and [`DyncastOrd`] can both be implemented manually.
-//! 
+//!
 //! <s>
 //!
 //! A [`DyncastEq`] implementation is generated implicitly iff you write `#[dyncast(impl dyn PartialEq<dyn Dyncast>)]`,
@@ -109,7 +109,7 @@
 //!
 //! A [`DyncastOrd`] implementation is generated implicitly iff you write `#[dyncast(impl dyn PartialOrd<dyn Dyncast>, impl dyn DynOrd)]`,
 //! conditional on `Self` being [`DyncastEq`], [`Ord`] and [`Any`].
-//! 
+//!
 //! </s>
 //!
 //! ## Hashing
