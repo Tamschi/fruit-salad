@@ -71,14 +71,8 @@
 //! assert_eq!(a.partial_cmp(b), None);
 //! assert_eq!(b.partial_cmp(a), None);
 //!
-//! assert_eq!(
-//!   format!("{:?}", a),
-//!   "dyn Dyncast = !dyn Debug"
-//! );
-//! assert_eq!(
-//!   format!("{:?}", b),
-//!   "dyn Dyncast = B"
-//! );
+//! assert_eq!(format!("{:?}", a), "dyn Dyncast = !dyn Debug");
+//! assert_eq!(format!("{:?}", b), "dyn Dyncast = B");
 //!
 //! assert!(a.dyncast::<dyn Debug>().is_none());
 //! assert!(b.dyncast::<dyn Debug>().is_some());
