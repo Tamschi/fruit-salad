@@ -94,6 +94,7 @@ version = "0.0.1"
 dependencies = [
  "call2-for-syn",
  "debugless-unwrap",
+ "fruit-salad",
  "lazy_static",
  "proc-macro-crate",
  "proc-macro2",

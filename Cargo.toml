@@ -38,7 +38,7 @@ maintenance = { status = "experimental" } # This may differ between branches.
 [features]
 alloc = []
 default = ["std"]
-macros = ["fruit-salad_proc-macro-definitions"]
+macros = ["fruit-salad_proc-macro-definitions", "static_assertions"]
 std = ["alloc"]
 
 [dependencies]

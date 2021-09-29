@@ -40,12 +40,69 @@ macro_rules! tokens_eq {
 	};
 }
 
-/// Implements `Dyncast` for an enum, struct, trait, trait alias, type alias or union.
+/// Implements `Dyncast` for an enum, struct, trait, trait alias, type alias or union.  
+/// Requires feature `"macros"`.
 ///
 /// The implementation is limited to targets that are `'static`,
 /// and targeting `Self` is explicit.
 ///
 /// No target is available by default.
+///
+/// # Specifying targets
+///
+/// To specify a target, add a `#[dyncast(Target)]` attribute,
+/// where `Target` is an in-scope `'static` type or type path.
+///
+/// You can specify a target multiple times (except token literal `impl` targets),
+/// specify multiple targets in one `#[dyncast(…)]` attribute by separating them with commas and
+/// stack multiple `#[dyncast(…)]` attributes on the same derive target.
+///
+/// > There is no explicit deduplication of targets,
+/// > but the compiler may still simplify them as duplicates appear as shadowed `else if` branches.
+///
+/// ## `impl` targets
+///
+/// In addition to the plain type targets above, the following token literal targets are available:
+///
+/// - `impl dyn DynHash`
+///
+///   Conveniently targets [`DynHash`](trait.DynHash.html) without that being in scope.
+///
+///   Requires a [`DynHash`](trait.DynHash.html) implementation.
+///
+///   [`DynHash`](trait.DynHash.html) is blanket-implemented for all types that are [`Hash`].
+///
+/// - `impl dyn PartialEq<dyn Dyncast>`
+///
+///   Implements and targets dynamic partial equality,
+///   so that distinct underlying types are treated as distinct.
+///
+///   Requires a [`PartialEq<Self>`] implementation on `Self` and that `Self` is a dyncast target.
+///
+/// - `impl dyn PartialOrd<dyn Dyncast>`
+///
+///   Implements and targets dynamic partial ordering,
+///   so that distinct underlying types are treated as incomparable.
+///
+///   Requires a [`PartialOrd<Self>`] implementation on `Self` and that `Self` is a dyncast target.
+///
+/// **If these targets are unavailable, `dyn Dyncast` trait objects made from instances of
+/// this type will not hash properly and always return [`false`] or [`None`] from comparisons!**
+///
+/// # Example
+///
+/// ```rust
+/// use fruit_salad::Dyncast; // Import macro and trait.
+///
+/// #[derive(Debug, PartialEq, PartialOrd, Hash, Dyncast)]
+/// #[dyncast(Self)] // Works like `Any`.
+/// #[dyncast(dyn core::fmt::Debug)] // Must be in scope or qualified.
+/// #[dyncast(impl dyn DynHash)] // As `Hash` isn't object-safe.
+///
+/// // Allow dynamic comparisons to succeed:
+/// #[dyncast(impl dyn PartialEq<dyn Dyncast>, impl dyn PartialOrd<dyn Dyncast>)]
+/// struct MyStruct;
+/// ```
 #[proc_macro_derive(Dyncast, attributes(dyncast, dyncast))]
 pub fn dyncast_derive(input: TokenStream1) -> TokenStream1 {
 	let fruit_salad = fruit_salad_ident(Span::mixed_site());
@@ -278,7 +335,18 @@ fn implement_dyncast_target(
 
 	let fruit_salad = fruit_salad_ident(Span::mixed_site());
 
-	if tokens_eq!(type_, dyn PartialEq<dyn Dyncast>) {
+	if tokens_eq!(type_, dyn DynHash) {
+		// This is just a shorthand to avoid the import (as the trait is blanket-implemented),
+		// so there's nothing further done here.
+		call2_strict(
+			quote_spanned! {type_.span()=>
+				dyn ::#fruit_salad::DynHash
+			},
+			Type::parse,
+		)
+		.unwrap()
+		.unwrap()
+	} else if tokens_eq!(type_, dyn PartialEq<dyn Dyncast>) {
 		extra_impls.push(ExtraImplementation {
 			unsafe_: None,
 			what: call2_strict(
@@ -335,7 +403,7 @@ fn implement_dyncast_target(
 		require_self_downcast.push(impl_.span);
 		call2_strict(
 			quote_spanned! {type_.span()=>
-				dyn ::core::cmp::PartialEq::<dyn ::#fruit_salad::Dyncast>
+				dyn ::core::cmp::PartialOrd::<dyn ::#fruit_salad::Dyncast>
 			},
 			Type::parse,
 		)
@@ -401,7 +469,8 @@ impl DyncastTarget {
 	}
 }
 
-/// Implements `Dyncast` for an enum, struct, trait, trail alias, type alias or union.
+/// Implements `Dyncast` for an enum, struct, trait, trail alias, type alias or union.  
+/// Requires feature `"macros"`.
 ///
 /// The implementation is limited to targets that are `'static`,
 /// and targeting `Self` is explicit.
@@ -415,6 +484,8 @@ impl DyncastTarget {
 /// - `dyn` is optional,
 /// - generics are optional,
 /// - a where clause is optional.
+///
+/// Add dyncast targets via `#[dyncast(…)]` attributes on each parameter, like with the [`Dyncast`] derive macro.
 #[proc_macro]
 pub fn implement_dyncasts(input: TokenStream1) -> TokenStream1 {
 	let fruit_salad = fruit_salad_ident(Span::mixed_site());

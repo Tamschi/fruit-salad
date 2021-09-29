@@ -13,7 +13,14 @@
 //! Originally developed as part of [`rhizome`](https://crates.io/crates/rhizome) but now separate,
 //! this crate also works very well in combination with [`pinus`](https://crates.io/crates/pinus).
 //!
-//! ## Installation
+//! # WIP
+//!
+//! The to diminishing returns,
+//! I've currently left functionality related to complete comparisons unimplemented.
+//!
+//! Relevant parts of the documentation are labelled `not that useful yet`.
+//!
+//! # Installation
 //!
 //! Please use [cargo-edit](https://crates.io/crates/cargo-edit) to always add the latest version of this library:
 //!
@@ -21,7 +28,21 @@
 //! cargo add fruit-salad --features macros
 //! ```
 //!
-//! ## Example
+//! # Features
+//!
+//! ## `"alloc"`
+//!
+//! Requires the alloc crate and enables casting [`Box<dyn Dyncast>`] into other boxes.
+//!
+//! ## `"macros"`
+//!
+//! Makes the [`Dyncast`](derive.Dyncast.html) derive macro and [`implement_dyncasts!`](macro.implement_dyncasts.html) macro available.
+//!
+//! ## `"std"` (default)
+//!
+//! Implies `"alloc"`.
+//!
+//! # Example
 //!
 //! ```rust
 //! // TODO_EXAMPLE
@@ -36,9 +57,15 @@
 //!
 //! > It's variadic, stacks and mostly allows repeats, so that's quite flexible.
 //! > However, repeat types currently aren't explicitly deduplicated.
+//! > The compiler *may* still do so, but keep it in mind.
+//! >
+//! > The order of dyncast targets may also affect performance,
+//! > since the targets are checked against in sequence.
 //!
 //! You can use `Self` as shorthand for the current type, which also works with generics,
 //! but limits the generated [`Dyncast`] implementation by `where Self: 'static`.
+//!
+//! > Announced dyncast targets must all be `'static`, but the concrete instance doesn't have to be.
 //!
 //! ## Dynamic formatting
 //!
@@ -59,7 +86,7 @@
 //!
 //! Comparisons between distinct types will always result in [`false`] or [`None`] with the generated implementations.
 //!
-//! ## Complete comparisons
+//! ## `not that useful yet` Complete comparisons
 //!
 //! [`Dyncast`] alone never exposes complete comparisons without explicit dyncast.
 //!
@@ -74,25 +101,29 @@
 //! > That's simplified a bit, but close enough.
 //!
 //! [`DyncastEq`] and [`DyncastOrd`] can both be implemented manually.
+//! 
+//! <s>
 //!
 //! A [`DyncastEq`] implementation is generated implicitly iff you write `#[dyncast(impl dyn PartialEq<dyn Dyncast>)]`,
 //! conditional on `Self` being [`Eq`].
 //!
 //! A [`DyncastOrd`] implementation is generated implicitly iff you write `#[dyncast(impl dyn PartialOrd<dyn Dyncast>, impl dyn DynOrd)]`,
 //! conditional on `Self` being [`DyncastEq`], [`Ord`] and [`Any`].
+//! 
+//! </s>
 //!
 //! ## Hashing
 //!
 //! Meaningful hashing requires that the underlying type be *dynamically* [`DynHash`].
 //!
 //! A blanket implementation is available for types that are [`Hash`],
-//! but you still need to enable matching dyncasts using `#[dyncast(dyn DynHash)]`.
+//! but you still need to enable the dyncast using `#[dyncast(dyn DynHash)]`.
 //!
 //! Other types (that are not dynamically [`DynHash`]) hash dynamically by not hashing anything.
 //!
 //! <!-- FIXME: It would be good to emit a warning for types that are hash but not dynamically DynHash, where possible. -->
 //!
-//! For convenience, you can enable dyncasts without importing [`DynHash`] by writing `#[dyncast(impl dyn DynHash)]`.
+//! For convenience, you can enable this dyncast without importing [`DynHash`] by writing `#[dyncast(impl dyn DynHash)]`.
 
 #![doc(html_root_url = "https://docs.rs/fruit-salad/0.0.1")]
 #![warn(clippy::pedantic)]
@@ -111,7 +142,7 @@ pub mod readme {
 }
 
 use core::{
-	any::{Any, TypeId},
+	any::TypeId,
 	cmp::Ordering,
 	fmt::{self, Debug, Display},
 	hash::{Hash, Hasher},
@@ -241,6 +272,8 @@ impl<'a> dyn 'a + Dyncast {
 			})
 	}
 
+	/// Requires feature `"alloc"`.
+	///
 	/// # Safety
 	///
 	/// `TActual` and `TStatic` must be the same type except for lifetimes.
@@ -321,6 +354,8 @@ impl dyn Dyncast {
 		Self::dyncast_ptr_::<T, T>(this)
 	}
 
+	/// Requires feature `"alloc"`.
+	///
 	/// # Errors
 	///
 	/// Iff the cast fails, the original [`Box`](`alloc::boxed::Box`) is restored.
