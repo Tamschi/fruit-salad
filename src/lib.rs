@@ -66,7 +66,7 @@
 //! assert_ne!(a, b);
 //! assert_ne!(b, a);
 //!
-//! assert_eq!(a.partial_cmp(a), None); // Partial ordering isn't exposed.
+//! assert_eq!(a.partial_cmp(a), None); // Partial order isn't exposed.
 //! assert_eq!(b.partial_cmp(b), Some(core::cmp::Ordering::Equal));
 //! assert_eq!(a.partial_cmp(b), None);
 //! assert_eq!(b.partial_cmp(a), None);

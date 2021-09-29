@@ -117,7 +117,7 @@ macro_rules! tokens_eq {
 ///
 /// - `impl dyn PartialOrd<dyn Dyncast>`
 ///
-///   Implements and targets dynamic partial ordering,
+///   Implements and targets dynamic partial order,
 ///   so that distinct underlying types are treated as incomparable.
 ///
 ///   Requires a [`PartialOrd<Self>`] implementation on `Self` and that `Self` is a dyncast target.
