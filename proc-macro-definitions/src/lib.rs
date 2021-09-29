@@ -48,7 +48,7 @@ macro_rules! tokens_eq {
 ///
 /// No target is available by default.
 ///
-/// # Specifying targets
+/// # Specifying Targets
 ///
 /// To specify a target, add a `#[dyncast(Target)]` attribute,
 /// where `Target` is an in-scope `'static` type or type path.

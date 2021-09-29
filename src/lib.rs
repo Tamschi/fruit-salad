@@ -43,9 +43,50 @@
 //! Implies `"alloc"`.
 //!
 //! # Example
+//!```rust
+//! #![allow(clippy::eq_op)] // Identical args are intentional.
 //!
-//! ```rust
-//! // TODO_EXAMPLE
+//! use core::fmt::Debug;
+//! use fruit_salad::Dyncast; // With feature `"macros"`.
+//!
+//! #[derive(PartialEq, Dyncast, Hash)]
+//! #[dyncast(Self, impl dyn DynHash)]
+//! struct A;
+//!
+//! #[derive(Debug, PartialEq, PartialOrd, Dyncast)]
+//! #[dyncast(Self, dyn Debug)]
+//! #[dyncast(impl dyn PartialEq<dyn Dyncast>, impl dyn PartialOrd<dyn Dyncast>)]
+//! struct B;
+//!
+//! let a: &dyn Dyncast = Box::leak(Box::new(A));
+//! let b: &dyn Dyncast = Box::leak(Box::new(B));
+//!
+//! assert_ne!(a, a); // Partial equality isn't exposed.
+//! assert_eq!(b, b);
+//! assert_ne!(a, b);
+//! assert_ne!(b, a);
+//!
+//! assert_eq!(a.partial_cmp(a), None); // Partial ordering isn't exposed.
+//! assert_eq!(b.partial_cmp(b), Some(core::cmp::Ordering::Equal));
+//! assert_eq!(a.partial_cmp(b), None);
+//! assert_eq!(b.partial_cmp(a), None);
+//!
+//! assert_eq!(
+//!   format!("{:?}", a),
+//!   "dyn Dyncast = !dyn Debug"
+//! );
+//! assert_eq!(
+//!   format!("{:?}", b),
+//!   "dyn Dyncast = B"
+//! );
+//!
+//! assert!(a.dyncast::<dyn Debug>().is_none());
+//! assert!(b.dyncast::<dyn Debug>().is_some());
+//!
+//! // Also: `…_mut`, `…_pinned`, `…_box` and combinations thereof, as well as `…ptr`.
+//! // `…box` methods require the `"alloc"` feature.
+//! let _a: &A = a.dyncast().unwrap();
+//! let _b: &B = b.dyncast().unwrap();
 //! ```
 //!
 //! # ☡ Potential Trip-ups
@@ -313,6 +354,48 @@ impl<'a> dyn 'a + Dyncast {
 		//
 		// There might still be panics if the caller violates a safety contract somehow, but in that case all bets are off anyway.
 	}
+
+	/// Requires feature `"alloc"`.
+	///
+	/// # Safety
+	///
+	/// `TActual` and `TStatic` must be the same type except for lifetimes.
+	///
+	/// `TActual` must not be longer-lived than `Self`.
+	///
+	/// # Errors
+	///
+	/// Iff the cast fails, the original [`Box`](`alloc::boxed::Box`) is restored.
+	#[allow(missing_docs)]
+	#[cfg(feature = "alloc")]
+	pub unsafe fn dyncast_pinned_box_<TActual: ?Sized, TStatic: 'static + ?Sized>(
+		self: Pin<alloc::boxed::Box<Self>>,
+	) -> Result<Pin<alloc::boxed::Box<TActual>>, Pin<alloc::boxed::Box<Self>>> {
+		use alloc::boxed::Box;
+
+		let leaked = Box::into_raw(Pin::into_inner_unchecked(self));
+
+		(&*leaked)
+			.__dyncast(
+				NonNull::new_unchecked(leaked).cast(),
+				TypeId::of::<TStatic>(),
+			)
+			.map(|pointer_data| {
+				#[allow(clippy::cast_ptr_alignment)] // Read unaligned.
+				Pin::new_unchecked(Box::from_raw(
+					pointer_data
+						.as_ptr()
+						.cast::<*mut TActual>()
+						.read_unaligned(),
+				))
+			})
+			.ok_or_else(|| Pin::new_unchecked(Box::from_raw(leaked)))
+
+		// Normally there should be a bit of error handling here to prevent leaks in cases where `.__dyncast` panics,
+		// but since this crate fully controls that implementation, we can assume that just never happens in a meaningful way.
+		//
+		// There might still be panics if the caller violates a safety contract somehow, but in that case all bets are off anyway.
+	}
 }
 
 /// Safe `'static`-object dyncast API.
@@ -365,6 +448,19 @@ impl dyn Dyncast {
 		self: alloc::boxed::Box<Self>,
 	) -> Result<alloc::boxed::Box<T>, alloc::boxed::Box<Self>> {
 		unsafe { self.dyncast_box_::<T, T>() }
+	}
+
+	/// Requires feature `"alloc"`.
+	///
+	/// # Errors
+	///
+	/// Iff the cast fails, the original [`Box`](`alloc::boxed::Box`) is restored.
+	#[allow(missing_docs)]
+	#[cfg(feature = "alloc")]
+	pub fn dyncast_pinned_box<T: 'static + ?Sized>(
+		self: Pin<alloc::boxed::Box<Self>>,
+	) -> Result<Pin<alloc::boxed::Box<T>>, Pin<alloc::boxed::Box<Self>>> {
+		unsafe { self.dyncast_pinned_box_::<T, T>() }
 	}
 }
 
