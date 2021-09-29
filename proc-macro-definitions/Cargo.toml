@@ -27,5 +27,5 @@ tap = "1.0.1"
 unquote = "0.0.6"
 
 [dev-dependencies]
-# fruit-salad = { version = "0.0.1", path = "..", features = ["macros"] }
+fruit-salad = { version = "0.0.1", path = "..", features = ["macros"] }
 version-sync = "0.9.1"
