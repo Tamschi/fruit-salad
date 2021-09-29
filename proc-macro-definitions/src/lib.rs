@@ -60,6 +60,42 @@ macro_rules! tokens_eq {
 /// > There is no explicit deduplication of targets,
 /// > but the compiler may still simplify them as duplicates appear as shadowed `else if` branches.
 ///
+/// To specify non-trait types other than literally `Self`, you must prefix them with `unsafe`:
+///
+/// ```compile_fail
+/// use fruit_salad::Dyncast;
+///
+/// #[derive(Dyncast)]
+/// #[dyncast(A)]
+/// struct A;
+/// ```
+///
+/// ```rust
+/// use fruit_salad::Dyncast;
+///
+/// #[derive(Dyncast)]
+/// #[dyncast(unsafe A)]
+/// struct A;
+/// ```
+///
+/// ```compile_fail
+/// #![deny(unsafe_code)]
+///
+/// use fruit_salad::Dyncast;
+///
+/// #[derive(Dyncast)]
+/// #[dyncast(unsafe A)]
+/// struct A;
+/// ```
+///
+/// The targeted type must be layout-compatible,
+/// exactly like when using [`mem::transmute`](`core::mem::transmute`).
+///
+/// > Conversely, misusing this feature (by for example targeting a type that's not layout-compatible)
+/// > is considered out of scope and may cease to compile at any time, if it doesn't fail to do so already.
+/// >
+/// > (It may also begin to compile without notice. Be careful.)
+///
 /// ## `impl` targets
 ///
 /// In addition to the plain type targets above, the following token literal targets are available:
@@ -70,7 +106,7 @@ macro_rules! tokens_eq {
 ///
 ///   Requires a [`DynHash`](trait.DynHash.html) implementation.
 ///
-///   [`DynHash`](trait.DynHash.html) is blanket-implemented for all types that are [`Hash`].
+///   > [`DynHash`](trait.DynHash.html) is already blanket-implemented for all types that are [`Hash`].
 ///
 /// - `impl dyn PartialEq<dyn Dyncast>`
 ///
@@ -87,7 +123,8 @@ macro_rules! tokens_eq {
 ///   Requires a [`PartialOrd<Self>`] implementation on `Self` and that `Self` is a dyncast target.
 ///
 /// **If these targets are unavailable, `dyn Dyncast` trait objects made from instances of
-/// this type will not hash properly and always return [`false`] or [`None`] from comparisons!**
+/// this type will not hash properly and always return [`false`] or [`None`] from comparisons,
+/// all respectively!**
 ///
 /// # Example
 ///
@@ -202,6 +239,11 @@ fn implement_dyncast(
 				has_self_downcast = true;
 			}
 
+			let unsafe_ = dyncast_target.unsafe_
+				.unwrap_or_else(|| Token![unsafe](
+					dyncast_target.type_.span().resolved_at(Span::mixed_site())
+				));
+
 			let diagnostics = dyncast_target.diagnostics();
 
 			let type_ = implement_dyncast_target(dyncast_target, &mut extra_impls, &mut require_self_downcast);
@@ -247,12 +289,8 @@ fn implement_dyncast(
 				}
 			};
 
-
-			let branch = quote_spanned! {type_.span().resolved_at(Span::mixed_site())=> if target == ::std::any::TypeId::of::<#type_>() {
-				#diagnostics
-				#pointer_size_assertion;
-				::core::option::Option::Some(unsafe {
-					let mut result_memory = ::core::mem::MaybeUninit::<[u8; ::core::mem::size_of::<&dyn Dyncast>()]>::uninit();
+			let conversion = quote_spanned! {type_.span().resolved_at(Span::mixed_site())=>
+				let mut result_memory = ::core::mem::MaybeUninit::<[u8; ::core::mem::size_of::<&dyn Dyncast>()]>::uninit();
 					result_memory
 						.as_mut_ptr()
 						.cast::<::core::ptr::NonNull<#type_>>()
@@ -261,7 +299,19 @@ fn implement_dyncast(
 						)
 					);
 					result_memory
-				})
+			};
+
+			let unsafe_block = quote_spanned! {unsafe_.span()=>
+				#unsafe_ {
+					#conversion
+				}
+			};
+
+
+			let branch = quote_spanned! {type_.span().resolved_at(Span::mixed_site())=> if target == ::std::any::TypeId::of::<#type_>() {
+				#diagnostics
+				#pointer_size_assertion
+				::core::option::Option::Some(#unsafe_block)
 			} else};
 			branch
 		}).collect::<Vec<_>>();

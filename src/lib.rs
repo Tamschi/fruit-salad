@@ -32,7 +32,7 @@
 //!
 //! ## `"alloc"`
 //!
-//! Requires the alloc crate and enables casting [`Box<dyn Dyncast>`] into other boxes.
+//! Requires the [`alloc`] crate and enables casting [`Box<dyn Dyncast>`](`alloc::boxed::Box`) into other boxes.
 //!
 //! ## `"macros"`
 //!
@@ -40,7 +40,7 @@
 //!
 //! ## `"std"` (default)
 //!
-//! Implies `"alloc"`.
+//! Requires the [`std`] crate and implies `"alloc"`.
 //!
 //! # Example
 //!```rust
@@ -136,8 +136,8 @@
 //! - [`DyncastEq`], which is also [`Deref<Target = dyn Dyncast>`](`Deref`), and
 //! - [`DyncastOrd`], which is also [`Deref<Target = dyn DyncastEq>`](`Deref`).
 //!
-//! Additionally, [`DynOrd`] is an object-safe version of [`Ord`] and can be generated,
-//! conditional on `Self` being [`Ord`] and [`Any`].
+//! Additionally, [`DynOrd`] is an object-safe version of [`Ord`] <s>and can be generated,
+//! conditional on `Self` being [`Ord`] and [`Any`](`core::any::Any`)</s>.
 //!
 //! > That's simplified a bit, but close enough.
 //!
@@ -149,7 +149,7 @@
 //! conditional on `Self` being [`Eq`].
 //!
 //! A [`DyncastOrd`] implementation is generated implicitly iff you write `#[dyncast(impl dyn PartialOrd<dyn Dyncast>, impl dyn DynOrd)]`,
-//! conditional on `Self` being [`DyncastEq`], [`Ord`] and [`Any`].
+//! conditional on `Self` being [`DyncastEq`], [`Ord`] and [`Any`](`core::any::Any`).
 //!
 //! </s>
 //!
@@ -627,7 +627,7 @@ impl<'a> Hash for dyn 'a + Dyncast {
 
 /// `not that useful yet` Object-safe [`Ord`].
 ///
-/// Where possible, prefer [`DyncastOrd`] over manually [`dyncast`](`<dyn Dyncast>::dyncast`)ing to [`dyn DynOrd`].
+/// Where possible, prefer [`DyncastOrd`] over manually [`dyncast`](trait.Dyncast.html#method.dyncast)ing to [`dyn DynOrd`].
 pub unsafe trait DynOrd {
 	fn concrete_type_id(&self) -> TypeId;
 

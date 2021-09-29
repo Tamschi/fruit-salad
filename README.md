@@ -20,7 +20,7 @@ This is a (mostly) trait object **reference** casting and comparison crate.
 There is no registry, instead targets are engraved directly into the `Dyncast` trait implementation by a derive macro.
 
 Concrete types can be targeted too, unsafely through reinterpret casts.  
-(This is subject to `#[deny(unsafe)]`. (TODO))
+(This is subject to `#[deny(unsafe_code)]`.)
 
 It also does mutability and pin projection, while being economical regarding text size…
 

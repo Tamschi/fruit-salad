@@ -1,3 +1,4 @@
+#![forbid(unsafe_code)]
 #![cfg(feature = "macros")]
 
 use core::fmt::Debug;
