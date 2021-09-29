@@ -55,8 +55,8 @@ struct A;
 #[dyncast(impl dyn PartialEq<dyn Dyncast>, impl dyn PartialOrd<dyn Dyncast>)]
 struct B;
 
-let a: &dyn Dyncast = Box::leak(Box::new(A));
-let b: &dyn Dyncast = Box::leak(Box::new(B));
+let a: &dyn Dyncast = &A;
+let b: &dyn Dyncast = &B;
 
 assert_ne!(a, a); // Partial equality isn't exposed.
 assert_eq!(b, b);
