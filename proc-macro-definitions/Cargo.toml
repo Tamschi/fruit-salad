@@ -23,7 +23,7 @@ proc-macro-crate = "1.1.0"
 proc-macro2 = "1.0.29"
 quote = "1.0.2"
 syn-mid = "0.5.0"
-syn = { version = "1.0.77", features = ["full", "visit-mut"] }
+syn = { version = "1.0.78", features = ["full", "visit-mut"] }
 tap = "1.0.1"
 unquote = "0.0.6"
 
