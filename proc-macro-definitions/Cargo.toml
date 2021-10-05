@@ -21,7 +21,7 @@ debugless-unwrap = "0.0.4"
 lazy_static = "1.4.0"
 proc-macro-crate = "1.1.0"
 proc-macro2 = "1.0.29"
-quote = "1.0.2"
+quote = "1.0.10"
 syn-mid = "0.5.0"
 syn = { version = "1.0.77", features = ["full", "visit-mut"] }
 tap = "1.0.1"
