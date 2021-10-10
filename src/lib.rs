@@ -15,10 +15,10 @@
 //!
 //! # WIP
 //!
-//! The to diminishing returns,
+//! Due to diminishing returns,
 //! I've currently left functionality related to complete comparisons unimplemented.
 //!
-//! Relevant parts of the documentation are labelled `not that useful yet`.
+//! Relevant parts of the documentation are labelled `not that useful yet` and ~~stricken through~~ where unimplemented.
 //!
 //! # Installation
 //!
