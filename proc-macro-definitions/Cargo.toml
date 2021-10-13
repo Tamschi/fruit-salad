@@ -20,7 +20,7 @@ call2-for-syn = "2.0.3"
 debugless-unwrap = "0.0.4"
 lazy_static = "1.4.0"
 proc-macro-crate = "1.1.0"
-proc-macro2 = "1.0.29"
+proc-macro2 = "1.0.30"
 quote = "1.0.2"
 syn-mid = "0.5.0"
 syn = { version = "1.0.77", features = ["full", "visit-mut"] }
