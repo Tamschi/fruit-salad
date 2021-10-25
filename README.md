@@ -25,7 +25,7 @@ Concrete types can be targeted too, unsafely through reinterpret casts.
 It also does mutability and pin projection, while being economical regarding text size…
 
 > Basically I needed something that's a bit less fancy than the existing solutions,
-> and it escalated a bit for there.
+> and it escalated a bit from there.
 
 Originally developed as part of [`rhizome`](https://crates.io/crates/rhizome) but now separate,
 this crate also works very well in combination with [`pinus`](https://crates.io/crates/pinus).
