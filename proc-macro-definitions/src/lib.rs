@@ -1,4 +1,4 @@
-#![doc(html_root_url = "https://docs.rs/fruit-salad_proc-macro-definitions/0.0.1")]
+#![doc(html_root_url = "https://docs.rs/fruit-salad_proc-macro-definitions/0.0.2")]
 #![forbid(unsafe_code)]
 #![warn(clippy::pedantic)]
 #![allow(clippy::semicolon_if_nothing_returned, clippy::too_many_lines)]

@@ -77,7 +77,7 @@ dependencies = [
 
 [[package]]
 name = "fruit-salad"
-version = "0.0.1"
+version = "0.0.2"
 dependencies = [
  "cargo-husky",
  "doc-comment",
@@ -90,7 +90,7 @@ dependencies = [
 
 [[package]]
 name = "fruit-salad_proc-macro-definitions"
-version = "0.0.1"
+version = "0.0.2"
 dependencies = [
  "call2-for-syn",
  "debugless-unwrap",

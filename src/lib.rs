@@ -160,7 +160,7 @@
 //!
 //! For convenience, you can enable this dyncast without importing [`DynHash`] by writing `#[dyncast(impl dyn DynHash)]`.
 
-#![doc(html_root_url = "https://docs.rs/fruit-salad/0.0.1")]
+#![doc(html_root_url = "https://docs.rs/fruit-salad/0.0.2")]
 #![warn(clippy::pedantic)]
 #![allow(clippy::semicolon_if_nothing_returned)]
 #![no_std]

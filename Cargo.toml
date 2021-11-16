@@ -6,14 +6,14 @@ members = [
 
 [package]
 name = "fruit-salad"
-version = "0.0.1"
+version = "0.0.2"
 authors = ["Tamme Schichler <tamme@schichler.dev>"]
 edition = "2018"
 description = "Compare apples and oranges (and more). Trait object reference casting and trait object comparisons."
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/Tamschi/fruit-salad"
-homepage = "https://github.com/Tamschi/fruit-salad/tree/v0.0.1"
-documentation = "https://docs.rs/fruit-salad/0.0.1"
+homepage = "https://github.com/Tamschi/fruit-salad/tree/v0.0.2"
+documentation = "https://docs.rs/fruit-salad/0.0.2"
 keywords = ["pin", "trait", "object", "eq", "ord"]
 categories = ["rust-patterns"]
 readme = "README.md"
@@ -42,7 +42,7 @@ macros = ["fruit-salad_proc-macro-definitions", "static_assertions"]
 std = ["alloc"]
 
 [dependencies]
-fruit-salad_proc-macro-definitions = { version = "0.0.1", path = "proc-macro-definitions", optional = true }
+fruit-salad_proc-macro-definitions = { version = "0.0.2", path = "proc-macro-definitions", optional = true }
 static_assertions = { version = "1.1.0", optional = true }
 
 [dev-dependencies]
