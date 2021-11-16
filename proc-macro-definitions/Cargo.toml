@@ -1,13 +1,13 @@
 [package]
 name = "fruit-salad_proc-macro-definitions"
-version = "0.0.1"
+version = "0.0.2"
 authors = ["Tamme Schichler <tamme@schichler.dev>"]
 edition = "2018"
 description = "Procedural macro definitions for fruit-salad."
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/Tamschi/fruit-salad"
 homepage = "https://github.com/Tamschi/fruit-salad"
-documentation = "https://docs.rs/fruit-salad_proc-macro-definitions/0.0.1"
+documentation = "https://docs.rs/fruit-salad_proc-macro-definitions/0.0.2"
 keywords = []
 categories = []
 publish = false
@@ -28,5 +28,5 @@ tap = "1.0.1"
 unquote = "0.0.6"
 
 [dev-dependencies]
-fruit-salad = { version = "0.0.1", path = "..", features = ["macros"] }
+fruit-salad = { version = "0.0.2", path = "..", features = ["macros"] }
 version-sync = "0.9.1"
