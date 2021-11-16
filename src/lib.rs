@@ -1,5 +1,7 @@
 //! This is a (mostly) trait object **reference** casting and comparison crate.
 //!
+//! [![Zulip Chat](https://img.shields.io/endpoint?label=chat&url=https%3A%2F%2Fiteration-square-automation.schichler.dev%2F.netlify%2Ffunctions%2Fstream_subscribers_shield%3Fstream%3Dproject%252Ffruit-salad)](https://iteration-square.schichler.dev/#narrow/stream/project.2Ffruit-salad)
+//!
 //! There is no registry, instead targets are engraved directly into the `Dyncast` trait implementation by a derive macro.
 //!
 //! Concrete types can be targeted too, unsafely through reinterpret casts.  
@@ -15,10 +17,10 @@
 //!
 //! # WIP
 //!
-//! The to diminishing returns,
+//! Due to diminishing returns,
 //! I've currently left functionality related to complete comparisons unimplemented.
 //!
-//! Relevant parts of the documentation are labelled `not that useful yet`.
+//! Relevant parts of the documentation are labelled `not that useful yet` and ~~stricken through~~ where unimplemented.
 //!
 //! # Installation
 //!
@@ -44,6 +46,8 @@
 //!
 //! # Example
 //!```rust
+//! #[cfg(feature = "macros")]
+//! {
 //! #![allow(clippy::eq_op)] // Identical args are intentional.
 //!
 //! use core::fmt::Debug;
@@ -58,27 +62,21 @@
 //! #[dyncast(impl dyn PartialEq<dyn Dyncast>, impl dyn PartialOrd<dyn Dyncast>)]
 //! struct B;
 //!
-//! let a: &dyn Dyncast = Box::leak(Box::new(A));
-//! let b: &dyn Dyncast = Box::leak(Box::new(B));
+//! let a: &dyn Dyncast = &A;
+//! let b: &dyn Dyncast = &B;
 //!
 //! assert_ne!(a, a); // Partial equality isn't exposed.
 //! assert_eq!(b, b);
 //! assert_ne!(a, b);
 //! assert_ne!(b, a);
 //!
-//! assert_eq!(a.partial_cmp(a), None); // Partial ordering isn't exposed.
+//! assert_eq!(a.partial_cmp(a), None); // Partial order isn't exposed.
 //! assert_eq!(b.partial_cmp(b), Some(core::cmp::Ordering::Equal));
 //! assert_eq!(a.partial_cmp(b), None);
 //! assert_eq!(b.partial_cmp(a), None);
 //!
-//! assert_eq!(
-//!   format!("{:?}", a),
-//!   "dyn Dyncast = !dyn Debug"
-//! );
-//! assert_eq!(
-//!   format!("{:?}", b),
-//!   "dyn Dyncast = B"
-//! );
+//! assert_eq!(format!("{:?}", a), "dyn Dyncast = !dyn Debug");
+//! assert_eq!(format!("{:?}", b), "dyn Dyncast = B");
 //!
 //! assert!(a.dyncast::<dyn Debug>().is_none());
 //! assert!(b.dyncast::<dyn Debug>().is_some());
@@ -87,6 +85,7 @@
 //! // `…box` methods require the `"alloc"` feature.
 //! let _a: &A = a.dyncast().unwrap();
 //! let _b: &B = b.dyncast().unwrap();
+//! }
 //! ```
 //!
 //! # ☡ Potential Trip-ups
@@ -166,8 +165,8 @@
 //!
 //! For convenience, you can enable this dyncast without importing [`DynHash`] by writing `#[dyncast(impl dyn DynHash)]`.
 
-#![doc(html_root_url = "https://docs.rs/fruit-salad/0.0.1")]
-#![warn(clippy::pedantic)]
+#![doc(html_root_url = "https://docs.rs/fruit-salad/0.0.2")]
+#![warn(clippy::pedantic, missing_docs)]
 #![allow(clippy::semicolon_if_nothing_returned)]
 #![no_std]
 
@@ -601,6 +600,8 @@ impl<'a> PartialOrd for dyn 'a + Dyncast {
 
 /// Object-safe [`Hash`].
 pub trait DynHash {
+	/// Hashes this instance.
+	/// See [`Hash::hash`].
 	fn dyn_hash(&self, state: &mut dyn Hasher);
 }
 impl<T: ?Sized> DynHash for T
@@ -629,8 +630,10 @@ impl<'a> Hash for dyn 'a + Dyncast {
 ///
 /// Where possible, prefer [`DyncastOrd`] over manually [`dyncast`](trait.Dyncast.html#method.dyncast)ing to [`dyn DynOrd`].
 pub unsafe trait DynOrd {
+	/// Retrieves the [`TypeId`] of the underlying instance.
 	fn concrete_type_id(&self) -> TypeId;
 
+	/// Dynamically compares `self` to `other`.
 	fn dyn_cmp(&self, other: &dyn DynOrd) -> Ordering;
 }
 
@@ -707,6 +710,7 @@ use private::Upcast;
 /// `not that useful yet` [`Dyncast`] and *dynamically* [`Eq`]
 //TODO: Other traits
 pub trait DyncastEq: Dyncast + for<'a> Upcast<dyn 'a + Dyncast> {
+	/// Upcasts this instance to [`Dyncast`].
 	fn as_dyncast<'a>(&self) -> &(dyn 'a + Dyncast)
 	where
 		Self: 'a,
@@ -714,6 +718,7 @@ pub trait DyncastEq: Dyncast + for<'a> Upcast<dyn 'a + Dyncast> {
 		self.upcast()
 	}
 
+	/// Mutably upcasts this instance to [`Dyncast`].
 	fn as_dyncast_mut<'a>(&mut self) -> &mut (dyn 'a + Dyncast)
 	where
 		Self: 'a,
@@ -747,7 +752,7 @@ impl<'a> PartialEq for dyn 'a + DyncastEq {
 	fn eq(&self, other: &Self) -> bool {
 		unsafe{self.dyncast_::<dyn 'a + PartialEq<dyn 'a + Dyncast>, dyn PartialEq<dyn Dyncast>>()}
 			.expect("Expected `Self` to be *dynamically* `dyn PartialEq<dyn Dyncast>` via `dyn DyncastOrd: PartialOrd`")
-			.eq(other)
+			.eq(other.as_dyncast())
 	}
 }
 impl<'a> Eq for dyn 'a + DyncastEq {}
@@ -760,6 +765,7 @@ impl<'a> Hash for dyn 'a + DyncastEq {
 /// `not that useful yet` [`DyncastEq`] and *dynamically* [`Ord`]
 //TODO: Other traits
 pub trait DyncastOrd: DyncastEq + for<'a> Upcast<dyn 'a + DyncastEq> {
+	/// Upcasts this instance to [`DyncastEq`].
 	fn as_dyncast_eq<'a>(&self) -> &(dyn 'a + DyncastEq)
 	where
 		Self: 'a,
@@ -767,6 +773,7 @@ pub trait DyncastOrd: DyncastEq + for<'a> Upcast<dyn 'a + DyncastEq> {
 		self.upcast()
 	}
 
+	/// Mutably upcasts this instance to [`DyncastEq`].
 	fn as_dyncast_eq_mut<'a>(&mut self) -> &mut (dyn 'a + DyncastEq)
 	where
 		Self: 'a,
@@ -798,7 +805,7 @@ impl<'a> Display for dyn 'a + DyncastOrd {
 }
 impl<'a> PartialEq for dyn 'a + DyncastOrd {
 	fn eq(&self, other: &Self) -> bool {
-		self.as_dyncast_eq().eq(other)
+		self.as_dyncast_eq().eq(other.as_dyncast_eq())
 	}
 }
 impl<'a> Eq for dyn 'a + DyncastOrd {}
@@ -806,7 +813,7 @@ impl<'a> PartialOrd for dyn 'a + DyncastOrd {
 	fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
 		unsafe{self.dyncast_::<dyn 'a+PartialOrd<dyn 'a+Dyncast>,dyn PartialOrd<dyn Dyncast>>()}
 		.expect("Expected `Self` to be *dynamically* `dyn PartialOrd<dyn Dyncast>` via `dyn DyncastOrd: PartialOrd`")
-		.partial_cmp(other)
+		.partial_cmp(other.as_dyncast())
 	}
 }
 impl<'a> Ord for dyn 'a + DyncastOrd {

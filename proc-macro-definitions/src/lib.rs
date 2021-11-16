@@ -1,4 +1,4 @@
-#![doc(html_root_url = "https://docs.rs/fruit-salad_proc-macro-definitions/0.0.1")]
+#![doc(html_root_url = "https://docs.rs/fruit-salad_proc-macro-definitions/0.0.2")]
 #![forbid(unsafe_code)]
 #![warn(clippy::pedantic)]
 #![allow(clippy::semicolon_if_nothing_returned, clippy::too_many_lines)]
@@ -117,7 +117,7 @@ macro_rules! tokens_eq {
 ///
 /// - `impl dyn PartialOrd<dyn Dyncast>`
 ///
-///   Implements and targets dynamic partial ordering,
+///   Implements and targets dynamic partial order,
 ///   so that distinct underlying types are treated as incomparable.
 ///
 ///   Requires a [`PartialOrd<Self>`] implementation on `Self` and that `Self` is a dyncast target.
