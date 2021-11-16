@@ -44,6 +44,8 @@
 //!
 //! # Example
 //!```rust
+//! #[cfg(feature = "macros")]
+//! {
 //! #![allow(clippy::eq_op)] // Identical args are intentional.
 //!
 //! use core::fmt::Debug;
@@ -81,6 +83,7 @@
 //! // `…box` methods require the `"alloc"` feature.
 //! let _a: &A = a.dyncast().unwrap();
 //! let _b: &B = b.dyncast().unwrap();
+//! }
 //! ```
 //!
 //! # ☡ Potential Trip-ups

@@ -41,6 +41,9 @@ cargo add fruit-salad --features macros
 ## Example
 
 ```rust
+#[cfg(feature = "macros")]
+{
+
 #![allow(clippy::eq_op)] // Identical args are intentional.
 
 use core::fmt::Debug;
@@ -78,6 +81,8 @@ assert!(b.dyncast::<dyn Debug>().is_some());
 // `…box` methods require the `"alloc"` feature.
 let _a: &A = a.dyncast().unwrap();
 let _b: &B = b.dyncast().unwrap();
+
+}
 ```
 
 ## License
