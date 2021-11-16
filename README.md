@@ -14,6 +14,7 @@
 [![good first issues](https://img.shields.io/github/issues-raw/Tamschi/fruit-salad/good%20first%20issue?label=good+first+issues)](https://github.com/Tamschi/fruit-salad/contribute)
 
 [![crev reviews](https://web.crev.dev/rust-reviews/badge/crev_count/fruit-salad.svg)](https://web.crev.dev/rust-reviews/crate/fruit-salad/)
+[![Zulip Chat](https://img.shields.io/endpoint?label=chat&url=https%3A%2F%2Fiteration-square-automation.schichler.dev%2F.netlify%2Ffunctions%2Fstream_subscribers_shield%3Fstream%3Dproject%252Ffruit-salad)](https://iteration-square.schichler.dev/#narrow/stream/project.2Ffruit-salad)
 
 This is a (mostly) trait object casting and comparison crate.
 

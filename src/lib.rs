@@ -1,5 +1,7 @@
 //! This is a (mostly) trait object **reference** casting and comparison crate.
 //!
+//! [![Zulip Chat](https://img.shields.io/endpoint?label=chat&url=https%3A%2F%2Fiteration-square-automation.schichler.dev%2F.netlify%2Ffunctions%2Fstream_subscribers_shield%3Fstream%3Dproject%252Ffruit-salad)](https://iteration-square.schichler.dev/#narrow/stream/project.2Ffruit-salad)
+//!
 //! There is no registry, instead targets are engraved directly into the `Dyncast` trait implementation by a derive macro.
 //!
 //! Concrete types can be targeted too, unsafely through reinterpret casts.  
@@ -164,7 +166,7 @@
 //! For convenience, you can enable this dyncast without importing [`DynHash`] by writing `#[dyncast(impl dyn DynHash)]`.
 
 #![doc(html_root_url = "https://docs.rs/fruit-salad/0.0.1")]
-#![warn(clippy::pedantic)]
+#![warn(clippy::pedantic, missing_docs)]
 #![allow(clippy::semicolon_if_nothing_returned)]
 #![no_std]
 
