@@ -741,7 +741,7 @@ impl<'a> PartialEq for dyn 'a + DyncastEq {
 	fn eq(&self, other: &Self) -> bool {
 		unsafe{self.dyncast_::<dyn 'a + PartialEq<dyn 'a + Dyncast>, dyn PartialEq<dyn Dyncast>>()}
 			.expect("Expected `Self` to be *dynamically* `dyn PartialEq<dyn Dyncast>` via `dyn DyncastOrd: PartialOrd`")
-			.eq(other)
+			.eq(other.as_dyncast())
 	}
 }
 impl<'a> Eq for dyn 'a + DyncastEq {}
@@ -792,7 +792,7 @@ impl<'a> Display for dyn 'a + DyncastOrd {
 }
 impl<'a> PartialEq for dyn 'a + DyncastOrd {
 	fn eq(&self, other: &Self) -> bool {
-		self.as_dyncast_eq().eq(other)
+		self.as_dyncast_eq().eq(other.as_dyncast_eq())
 	}
 }
 impl<'a> Eq for dyn 'a + DyncastOrd {}
@@ -800,7 +800,7 @@ impl<'a> PartialOrd for dyn 'a + DyncastOrd {
 	fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
 		unsafe{self.dyncast_::<dyn 'a+PartialOrd<dyn 'a+Dyncast>,dyn PartialOrd<dyn Dyncast>>()}
 		.expect("Expected `Self` to be *dynamically* `dyn PartialOrd<dyn Dyncast>` via `dyn DyncastOrd: PartialOrd`")
-		.partial_cmp(other)
+		.partial_cmp(other.as_dyncast())
 	}
 }
 impl<'a> Ord for dyn 'a + DyncastOrd {
