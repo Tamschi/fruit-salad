@@ -600,6 +600,8 @@ impl<'a> PartialOrd for dyn 'a + Dyncast {
 
 /// Object-safe [`Hash`].
 pub trait DynHash {
+	/// Hashes this instance.
+	/// See [`Hash::hash`].
 	fn dyn_hash(&self, state: &mut dyn Hasher);
 }
 impl<T: ?Sized> DynHash for T
@@ -628,8 +630,10 @@ impl<'a> Hash for dyn 'a + Dyncast {
 ///
 /// Where possible, prefer [`DyncastOrd`] over manually [`dyncast`](trait.Dyncast.html#method.dyncast)ing to [`dyn DynOrd`].
 pub unsafe trait DynOrd {
+	/// Retrieves the [`TypeId`] of the underlying instance.
 	fn concrete_type_id(&self) -> TypeId;
 
+	/// Dynamically compares `self` to `other`.
 	fn dyn_cmp(&self, other: &dyn DynOrd) -> Ordering;
 }
 
@@ -706,6 +710,7 @@ use private::Upcast;
 /// `not that useful yet` [`Dyncast`] and *dynamically* [`Eq`]
 //TODO: Other traits
 pub trait DyncastEq: Dyncast + for<'a> Upcast<dyn 'a + Dyncast> {
+	/// Upcasts this instance to [`Dyncast`].
 	fn as_dyncast<'a>(&self) -> &(dyn 'a + Dyncast)
 	where
 		Self: 'a,
@@ -713,6 +718,7 @@ pub trait DyncastEq: Dyncast + for<'a> Upcast<dyn 'a + Dyncast> {
 		self.upcast()
 	}
 
+	/// Mutably upcasts this instance to [`Dyncast`].
 	fn as_dyncast_mut<'a>(&mut self) -> &mut (dyn 'a + Dyncast)
 	where
 		Self: 'a,
@@ -759,6 +765,7 @@ impl<'a> Hash for dyn 'a + DyncastEq {
 /// `not that useful yet` [`DyncastEq`] and *dynamically* [`Ord`]
 //TODO: Other traits
 pub trait DyncastOrd: DyncastEq + for<'a> Upcast<dyn 'a + DyncastEq> {
+	/// Upcasts this instance to [`DyncastEq`].
 	fn as_dyncast_eq<'a>(&self) -> &(dyn 'a + DyncastEq)
 	where
 		Self: 'a,
@@ -766,6 +773,7 @@ pub trait DyncastOrd: DyncastEq + for<'a> Upcast<dyn 'a + DyncastEq> {
 		self.upcast()
 	}
 
+	/// Mutably upcasts this instance to [`DyncastEq`].
 	fn as_dyncast_eq_mut<'a>(&mut self) -> &mut (dyn 'a + DyncastEq)
 	where
 		Self: 'a,
