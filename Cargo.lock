@@ -81,11 +81,29 @@ version = "0.0.2"
 dependencies = [
  "cargo-husky",
  "doc-comment",
- "fruit-salad_proc-macro-definitions",
+ "fruit-salad_proc-macro-definitions 0.0.1",
  "git_info",
  "static_assertions",
  "version-sync",
  "wasm-bindgen-test",
+]
+
+[[package]]
+name = "fruit-salad_proc-macro-definitions"
+version = "0.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d9cbe4dc897ec616974db4f2c39fd7c94c5e21186fbe331b664129ebd657d0de"
+dependencies = [
+ "call2-for-syn",
+ "debugless-unwrap",
+ "lazy_static",
+ "proc-macro-crate",
+ "proc-macro2",
+ "quote",
+ "syn",
+ "syn-mid",
+ "tap",
+ "unquote",
 ]
 
 [[package]]
