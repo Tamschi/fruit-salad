@@ -221,7 +221,6 @@ fn implement_dyncast(
 				}
 			}
 
-			//FIXME: Should accept comma-separated types.
 			call2_strict(attribute.tokens.clone(), |input| {
 				let contents;
 				parenthesized!(contents in input);
