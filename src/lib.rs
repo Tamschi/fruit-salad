@@ -477,6 +477,10 @@ impl dyn Dyncast {
 /// >
 /// > - `self: NonNull<Self>` as receiver in object-safe `unsafe` trait methods.
 /// > - [#81513](https://github.com/rust-lang/rust/issues/81513) or similar.
+///
+/// # Safety
+///
+/// Do not implement this except through the [`derive`] macro.
 pub unsafe trait Dyncast {
 	/// This likely warrants a bit of an explanation,
 	/// even though it's really not part of the public API,
@@ -628,6 +632,10 @@ impl<'a> Hash for dyn 'a + Dyncast {
 /// `not that useful yet` Object-safe [`Ord`].
 ///
 /// Where possible, prefer [`DyncastOrd`] over manually [`dyncast`](trait.Dyncast.html#method.dyncast)ing to [`dyn DynOrd`].
+///
+/// # Safety
+///
+/// Implement this only via [`derive`]-macro.
 pub unsafe trait DynOrd {
 	/// Retrieves the [`TypeId`] of the underlying instance.
 	fn concrete_type_id(&self) -> TypeId;
