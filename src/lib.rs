@@ -177,9 +177,8 @@ extern crate alloc;
 extern crate std;
 
 #[cfg(doctest)]
-pub mod readme {
-	doc_comment::doctest!("../README.md");
-}
+#[doc = include_str!("../README.md")]
+mod readme {}
 
 use core::{
 	any::TypeId,

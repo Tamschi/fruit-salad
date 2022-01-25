@@ -2,6 +2,14 @@
 
 <!-- markdownlint-disable no-trailing-punctuation -->
 
+## next
+
+TODO: Date
+
+- **Breaking changes**:
+  - Increased required Rust version to 1.54
+    > due to rust-template upgrade (better testing).
+
 ## 0.0.2
 
 2021-11-16
