@@ -10,6 +10,10 @@ TODO: Date
   - Increased required Rust version to 1.54
     > due to rust-template upgrade (better testing).
 
+- Revisions:
+  - Fixed issue where a bunch of code would be printed into the documentation instead of just the type.
+  - Dyncast targets emitted into the documentation are now links.
+
 ## 0.0.2
 
 2021-11-16

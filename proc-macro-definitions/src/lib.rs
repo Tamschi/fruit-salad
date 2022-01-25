@@ -202,7 +202,7 @@ fn implement_dyncast(
 	let mut require_self_downcast: Vec<Span> = vec![];
 	let mut has_self_downcast: bool = false;
 
-	let target_branches = attributes
+	let targets = attributes
 		.iter()
 		.filter(|attribute| {
 			attribute.path.is_ident("dyncast")
@@ -231,7 +231,14 @@ fn implement_dyncast(
 		.collect::<Result<Vec<_>>>()
 		.unwrap(/*FIXME: Fail better! */)
 		.into_iter()
-		.flatten()
+		.flatten().collect::<Vec<_>>();
+
+	let target_types = targets
+		.iter()
+		.map(|dyncast_target| dyncast_target.type_.clone())
+		.collect::<Vec<_>>();
+
+	let target_branches = targets.into_iter()
 		.map(|dyncast_target| {
 
 			if tokens_eq!(dyncast_target.type_.to_token_stream(), Self) {
@@ -339,7 +346,7 @@ fn implement_dyncast(
 
 		/// # Targets
 		///
-		#(#[doc = concat!("- `", stringify!(#target_branches), "`")])*
+		#(#[doc = concat!("- [`", stringify!(#target_types), "`]")])*
 		unsafe impl#impl_generics ::#fruit_salad::Dyncast for #dyn_ #ident#type_generics
 			#where_clause
 		{
