@@ -44,10 +44,13 @@
 //!
 //! Requires the [`std`] crate and implies `"alloc"`.
 //!
-//! # Example
+//! # Examples
+//!
+//! ## General Use
+//!
 //!```rust
-//! #[cfg(feature = "macros")]
-//! {
+//! # #[cfg(feature = "macros")]
+//! # {
 //! #![allow(clippy::eq_op)] // Identical args are intentional.
 //!
 //! use core::fmt::Debug;
@@ -85,7 +88,21 @@
 //! // `…box` methods require the `"alloc"` feature.
 //! let _a: &A = a.dyncast().unwrap();
 //! let _b: &B = b.dyncast().unwrap();
-//! }
+//! # }
+//! ```
+//!
+//! ## Outer Generics
+//!
+//! ```
+//! # #[cfg(feature = "macros")]
+//! # {
+//! use fruit_salad::Dyncast; // With feature `"macros"`.
+//!
+//! #[derive(Dyncast)]
+//! #[dyncast(#![runtime_pointer_size_assertion] unsafe T)]
+//! #[repr(transparent)]
+//! struct DyncastWrapper<T>(pub T);
+//! # }
 //! ```
 //!
 //! # ☡ Potential Trip-ups

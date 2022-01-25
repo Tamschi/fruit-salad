@@ -16,7 +16,7 @@ use std::ops::Deref;
 use syn::{
 	parenthesized,
 	parse::{Parse, ParseStream},
-	parse_macro_input,
+	parse2, parse_macro_input,
 	punctuated::Punctuated,
 	spanned::Spanned,
 	visit_mut::{self, VisitMut},
@@ -126,6 +126,20 @@ macro_rules! tokens_eq {
 /// this type will not hash properly and always return [`false`] or [`None`] from comparisons,
 /// all respectively!**
 ///
+/// ## Outer Generics
+///
+/// If you get the error [`error[E0401]: can't use generic parameters from outer function`](https://doc.rust-lang.org/error-index.html#E0401),
+/// you must assert the pointer-size-related memory safety at runtime instead:
+///
+/// ```
+/// use fruit_salad::Dyncast;
+///
+/// #[derive(Dyncast)]
+/// #[dyncast(#![runtime_pointer_size_assertion] unsafe T)]
+/// #[repr(transparent)]
+/// struct DyncastWrapper<T>(pub T);
+/// ```
+///
 /// # Example
 ///
 /// ```rust
@@ -144,14 +158,16 @@ macro_rules! tokens_eq {
 pub fn dyncast_derive(input: TokenStream1) -> TokenStream1 {
 	let fruit_salad = fruit_salad_ident(Span::mixed_site());
 	let derive_target = parse_macro_input!(input as DeriveTarget);
-	implement_dyncast(&derive_target, &fruit_salad, true).into()
+	implement_dyncast(&derive_target, &fruit_salad, true)
+		.unwrap_or_else(|error| error.to_compile_error())
+		.into()
 }
 
 fn implement_dyncast(
 	impl_target: &ImplTarget,
 	fruit_salad: &Ident,
 	ignore_unrelated_attributes: bool,
-) -> TokenStream2 {
+) -> Result<TokenStream2> {
 	#![allow(clippy::items_after_statements)]
 
 	let ImplTarget {
@@ -171,8 +187,6 @@ fn implement_dyncast(
 			})
 			.collect()
 	};
-
-	let has_self_generics = !generics.params.is_empty();
 
 	let (impl_generics, type_generics, where_clause) = generics.split_for_impl();
 
@@ -226,12 +240,16 @@ fn implement_dyncast(
 				parenthesized!(contents in input);
 				let targets = Punctuated::<DyncastTarget, Token![,]>::parse_terminated(&contents)?;
 				Ok(targets)
-			}).debugless_unwrap(/*FIXME: Fail better! */)
+			})
+			.map_err(|incomplete| match incomplete.parsed {
+				Ok(_) => incomplete.syn_error,
+				Err(error) => error,
+			})?
 		})
-		.collect::<Result<Vec<_>>>()
-		.unwrap(/*FIXME: Fail better! */)
+		.collect::<Result<Vec<_>>>()?
 		.into_iter()
-		.flatten().collect::<Vec<_>>();
+		.flatten()
+		.collect::<Vec<_>>();
 
 	let target_types = targets
 		.iter()
@@ -251,6 +269,8 @@ fn implement_dyncast(
 				));
 
 			let diagnostics = dyncast_target.diagnostics();
+
+			let runtime_pointer_size_assertion = dyncast_target.options.contains(&DyncastTargetOption::RuntimePointerSizeAssertion);
 
 			let type_ = implement_dyncast_target(dyncast_target, &mut extra_impls, &mut require_self_downcast);
 
@@ -284,10 +304,10 @@ fn implement_dyncast(
 				.visit_type_mut(&mut assertion_type);
 			}
 
-			let pointer_size_assertion = if contains_self && has_self_generics {
-				// Generic type parameters of `Self` cannot be used in the assertion.
+			let pointer_size_assertion = if runtime_pointer_size_assertion {
+				// Generic type parameters of `Self` cannot be used in a static assertion.
 				quote_spanned! {type_.span().resolved_at(Span::mixed_site())=>
-					::#fruit_salad::__::const_assert!(::core::mem::size_of::<*mut ()>() <= ::core::mem::size_of::<&dyn Dyncast>());
+					::core::assert!(::core::mem::size_of::<*mut #assertion_type>() <= ::core::mem::size_of::<&dyn Dyncast>());
 				}
 			} else {
 				quote_spanned! {type_.span().resolved_at(Span::mixed_site())=>
@@ -368,6 +388,7 @@ fn implement_dyncast(
 		#(#extra_impls)*
 		#(#require_self_downcast)*
 	}
+	.pipe(Ok)
 }
 
 struct ExtraImplementation {
@@ -491,6 +512,7 @@ fn is_self_type(t: &Type) -> bool {
 }
 
 struct DyncastTarget {
+	options: Vec<DyncastTargetOption>,
 	unsafe_: Option<Token![unsafe]>,
 	impl_: Option<Token![impl]>,
 	type_: Type,
@@ -498,6 +520,10 @@ struct DyncastTarget {
 impl Parse for DyncastTarget {
 	fn parse(input: ParseStream) -> Result<Self> {
 		Ok(Self {
+			options: Attribute::parse_inner(input)?
+				.into_iter()
+				.map(|attribute| parse2(attribute.parse_meta()?.into_token_stream()))
+				.collect::<Result<_>>()?,
 			unsafe_: input.parse().unwrap(),
 			impl_: input.parse().unwrap(),
 			type_: input.parse()?,
@@ -522,6 +548,30 @@ impl DyncastTarget {
 			return None;
 		}
 		.pipe(Some)
+	}
+}
+
+#[derive(PartialEq)]
+enum DyncastTargetOption {
+	RuntimePointerSizeAssertion,
+}
+
+impl Parse for DyncastTargetOption {
+	fn parse(input: ParseStream) -> Result<Self> {
+		mod kw {
+			syn::custom_keyword!(runtime_pointer_size_assertion);
+		}
+
+		let lookahead = input.lookahead1();
+		if lookahead.peek(kw::runtime_pointer_size_assertion) {
+			input
+				.parse::<kw::runtime_pointer_size_assertion>()
+				.expect("infallible");
+			Self::RuntimePointerSizeAssertion
+		} else {
+			return Err(lookahead.error());
+		}
+		.pipe(Ok)
 	}
 }
 
