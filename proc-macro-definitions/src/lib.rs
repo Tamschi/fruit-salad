@@ -361,7 +361,7 @@ fn implement_dyncast(
 		.into_iter()
 		.map(|span| quote_spanned!(span=> ::core::compile_error!("`Self`-dyncast required by this. Add `#[dyncast(Self)]`");));
 
-	quote_spanned! {Span::mixed_site()=>
+	Ok(quote_spanned! {Span::mixed_site()=>
 		#(#attribute_errors)*
 
 		/// # Targets
@@ -387,8 +387,7 @@ fn implement_dyncast(
 
 		#(#extra_impls)*
 		#(#require_self_downcast)*
-	}
-	.pipe(Ok)
+	})
 }
 
 struct ExtraImplementation {
