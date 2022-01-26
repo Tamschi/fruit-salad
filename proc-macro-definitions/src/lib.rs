@@ -146,8 +146,6 @@ macro_rules! tokens_eq {
 /// It's possible to specify a custom project to, for example,
 ///
 /// ```rust
-/// #![cfg(feature = "macros")]
-///
 /// use fruit_salad::Dyncast;
 ///
 /// /// This is a workaround required until pointer information can be manipulated more directly,
