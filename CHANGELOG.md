@@ -22,6 +22,22 @@ TODO: Date
     struct DyncastWrapper<T>(pub T);
     ```
 
+  - It's now possible to define custom projections:
+
+  ```rust
+  #[derive(Dyncast)]
+  #[dyncast(
+      #![runtime_pointer_size_assertion]
+      #![unsafe custom_projection(
+          #![unsafe deallocate_owned]
+          |this| (this as *const *mut T).read())
+      ]
+      unsafe T
+  )]
+  #[repr(transparent)]
+  pub struct BoxedDynamic<T: ?Sized>(pub Box<T>);
+  ```
+
 - Revisions:
   - Fixed issue where a bunch of code would be printed into the documentation instead of just the type.
   - Dyncast targets emitted into the documentation are now links.

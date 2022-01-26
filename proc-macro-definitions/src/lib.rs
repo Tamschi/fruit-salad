@@ -12,15 +12,16 @@ use proc_macro::TokenStream as TokenStream1;
 use proc_macro2::{Span, TokenStream as TokenStream2};
 use proc_macro_crate::{crate_name, FoundCrate};
 use quote::{quote, quote_spanned, ToTokens};
-use std::ops::Deref;
+use std::{ops::Deref, rc::Rc};
 use syn::{
-	parenthesized,
+	bracketed, parenthesized,
 	parse::{Parse, ParseStream},
-	parse2, parse_macro_input,
+	parse2, parse_macro_input, parse_quote_spanned,
 	punctuated::Punctuated,
 	spanned::Spanned,
+	token::{Bracket, Paren},
 	visit_mut::{self, VisitMut},
-	Attribute, Error, Generics, Ident, Item, Lifetime, PredicateType, Result, Token, Type,
+	Attribute, Error, Expr, Generics, Ident, Item, Lifetime, PredicateType, Result, Token, Type,
 	TypeParamBound, WhereClause, WherePredicate,
 };
 use tap::Pipe;
@@ -139,6 +140,53 @@ macro_rules! tokens_eq {
 /// #[repr(transparent)]
 /// struct DyncastWrapper<T>(pub T);
 /// ```
+///
+/// ## Custom Projections
+///
+/// It's possible to specify a custom project to, for example,
+///
+/// ```rust
+/// #![cfg(feature = "macros")]
+///
+/// use fruit_salad::Dyncast;
+///
+/// /// This is a workaround required until pointer information can be manipulated more directly,
+/// /// which should enable inlining the inner instance, avoiding a separate allocation in many cases.
+/// #[derive(Dyncast)]
+/// #[dyncast(
+///     #![runtime_pointer_size_assertion]
+///     #![unsafe custom_projection(
+///         #![unsafe deallocate_owned]
+///         |this| (this as *const *mut T).read()
+///     )]
+///     unsafe T
+/// )]
+/// #[repr(transparent)]
+/// pub struct BoxedDynamic<T: ?Sized>(pub Box<T>);
+/// ```
+///
+/// to store unsized instances behind `Dyncast`.
+///
+/// Repeated occurrences are ~~chained~~ invalid.
+///
+/// This by default means `DyncastWithPointerIdentity` won't be implemented.
+///
+/// ### Safety
+///
+/// The custom projection must fulfill several conditions:
+///
+/// - The pointer could be shared, which means exclusive references are largely unavailable.
+/// - The resulting pointer could be mutated through, which means shared references are largely unavailable.
+/// - The projection could be used to convert an [`::alloc::boxed::Box`] (or ABI-compatible owning smart pointer),
+///   so calling [`::alloc::box::Box::from_raw`] (with the target type parameter and using the global allocator) must be valid on it.
+///
+///   The original boxed instance's destructor is not run.
+///
+///   You can use `#![unsafe deallocate_owned]` to deallocate the original box allocation during boxed casting.
+///   It will otherwise be leaked unless there is data pointer identity across this conversion.
+///
+///   ~~You can use `#![unsafe uphold_identity]` to cancel out one occurrence of `#![unsafe custom_projection]`
+///   in terms of *not* implementing `DyncastWithPointerIdentity`.~~
 ///
 /// # Example
 ///
@@ -270,7 +318,48 @@ fn implement_dyncast(
 
 			let diagnostics = dyncast_target.diagnostics();
 
-			let runtime_pointer_size_assertion = dyncast_target.options.contains(&DyncastTargetOption::RuntimePointerSizeAssertion);
+			#[allow(clippy::match_wildcard_for_single_variants)]
+			let runtime_pointer_size_assertion = dyncast_target.options.iter().find_map(|option| match option {DyncastTargetOption::RuntimePointerSizeAssertion(span) => Some(span), _ => None}).copied();
+
+			// This isn't good code, but it works.
+			let projection: Option<Box<dyn Fn(Expr) -> TokenStream2>> = dyncast_target.options.iter().fold(None, |composite, option| {
+				#[allow(clippy::match_wildcard_for_single_variants)]
+				match *option {
+					DyncastTargetOption::CustomProjection { span, unsafe_, ref options, ref projection } => {
+						let composite = composite.unwrap_or_else(|| Box::new(Expr::into_token_stream));
+						let projection = Rc::clone(projection);
+
+						let deallocate_owned = quote_spanned!(span=>deallocate_owned);
+						let deallocate_owned = options.iter().find_map(|option| match option {
+							CustomProjectionOption::DeallocateOwned { unsafe_, span } => Some(quote_spanned! {span.resolved_at(Span::mixed_site())=>
+								if deallocate_owned {
+									#unsafe_ {
+										#[allow(clippy::drop_copy)]
+										::core::mem::drop(::#fruit_salad::__::#deallocate_owned(input))
+									}
+								}
+							}),
+						});
+
+						Some(Box::new(move |input| {
+							let input = composite(input);
+							quote_spanned! {span.resolved_at(Span::mixed_site())=>
+								match #input {
+									input => #unsafe_ {
+										match (#projection)(input) {
+											projected => {
+												#deallocate_owned
+												projected
+											}
+										}
+									}
+								}
+							}
+						}))
+					},
+					_ => composite,
+				}
+			});
 
 			let type_ = implement_dyncast_target(dyncast_target, &mut extra_impls, &mut require_self_downcast);
 
@@ -304,9 +393,9 @@ fn implement_dyncast(
 				.visit_type_mut(&mut assertion_type);
 			}
 
-			let pointer_size_assertion = if runtime_pointer_size_assertion {
+			let pointer_size_assertion = if let Some(span) = runtime_pointer_size_assertion {
 				// Generic type parameters of `Self` cannot be used in a static assertion.
-				quote_spanned! {type_.span().resolved_at(Span::mixed_site())=>
+				quote_spanned! {span.resolved_at(Span::mixed_site())=>
 					::core::assert!(::core::mem::size_of::<*mut #assertion_type>() <= ::core::mem::size_of::<&dyn Dyncast>());
 				}
 			} else {
@@ -315,13 +404,17 @@ fn implement_dyncast(
 				}
 			};
 
+			let projection = projection
+				.unwrap_or_else(|| Box::new(|input| quote_spanned!(type_.span().resolved_at(Span::mixed_site())=> #input as *mut #type_)))
+				(parse_quote_spanned!(type_.span().resolved_at(Span::mixed_site())=> this.as_ptr() as *mut Self));
+
 			let conversion = quote_spanned! {type_.span().resolved_at(Span::mixed_site())=>
 				let mut result_memory = ::core::mem::MaybeUninit::<[u8; ::core::mem::size_of::<&dyn Dyncast>()]>::uninit();
 					result_memory
 						.as_mut_ptr()
 						.cast::<::core::ptr::NonNull<#type_>>()
 						.write_unaligned(::core::ptr::NonNull::<#type_>::new_unchecked(
-							this.cast::<Self>().as_ptr() as *mut #type_
+							#projection
 						)
 					);
 					result_memory
@@ -339,8 +432,8 @@ fn implement_dyncast(
 				#pointer_size_assertion
 				::core::option::Option::Some(#unsafe_block)
 			} else};
-			branch
-		}).collect::<Vec<_>>();
+			Ok(branch)
+		}).collect::<Result<Vec<_>>>()?;
 
 	let extra_impls = extra_impls
 		.into_iter()
@@ -374,6 +467,7 @@ fn implement_dyncast(
 				&self,
 				this: ::core::ptr::NonNull<()>,
 				target: ::std::any::TypeId,
+				deallocate_owned: bool,
 			) -> ::core::option::Option<
 				::core::mem::MaybeUninit<
 					[::core::primitive::u8; ::core::mem::size_of::<&dyn ::#fruit_salad::Dyncast>()]
@@ -519,10 +613,20 @@ struct DyncastTarget {
 impl Parse for DyncastTarget {
 	fn parse(input: ParseStream) -> Result<Self> {
 		Ok(Self {
-			options: Attribute::parse_inner(input)?
-				.into_iter()
-				.map(|attribute| parse2(attribute.parse_meta()?.into_token_stream()))
-				.collect::<Result<_>>()?,
+			options: {
+				let mut options: Vec<TokenStream2> = vec![];
+				while input.peek(Token![#]) && input.peek2(Token![!]) && input.peek3(Bracket) {
+					input.parse::<Token![#]>().expect("contextually infallible");
+					input.parse::<Token![!]>().expect("contextually infallible");
+					let bracketed;
+					bracketed!(bracketed in input);
+					options.push(bracketed.parse().expect("infallible"))
+				}
+				options
+			}
+			.into_iter()
+			.map(parse2)
+			.collect::<Result<_>>()?,
 			unsafe_: input.parse().unwrap(),
 			impl_: input.parse().unwrap(),
 			type_: input.parse()?,
@@ -550,27 +654,111 @@ impl DyncastTarget {
 	}
 }
 
-#[derive(PartialEq)]
 enum DyncastTargetOption {
-	RuntimePointerSizeAssertion,
+	RuntimePointerSizeAssertion(Span),
+	CustomProjection {
+		unsafe_: Token![unsafe],
+		span: Span,
+		options: Vec<CustomProjectionOption>,
+		/// A callable ([`FnOnce(NonNull<Self>) -> NonNull<Target>`]-ish) expression,
+		/// which must also uphold pinning guarantees (as if projected from input to output) and no-aliasing (i.e. the input may be derived from a shared reference, and must not be treated as mutable, but may also be used to project a mutable reference and must not be treated as shareable).
+		projection: Rc<Expr>,
+	},
+	NoDataPointerIdentity(Span),
 }
 
 impl Parse for DyncastTargetOption {
 	fn parse(input: ParseStream) -> Result<Self> {
 		mod kw {
 			syn::custom_keyword!(runtime_pointer_size_assertion);
+			syn::custom_keyword!(custom_projection);
+			syn::custom_keyword!(no_data_pointer_identity);
 		}
 
 		let lookahead = input.lookahead1();
 		if lookahead.peek(kw::runtime_pointer_size_assertion) {
 			input
 				.parse::<kw::runtime_pointer_size_assertion>()
-				.expect("infallible");
-			Self::RuntimePointerSizeAssertion
+				.expect("infallible")
+				.span
+				.pipe(Self::RuntimePointerSizeAssertion)
+		} else if lookahead.peek(kw::no_data_pointer_identity) {
+			input
+				.parse::<kw::no_data_pointer_identity>()
+				.expect("infallible")
+				.span
+				.pipe(Self::NoDataPointerIdentity)
+		} else if lookahead.peek(Token![unsafe]) {
+			let unsafe_ = input.parse().expect("contextually infallible");
+
+			let lookahead = input.lookahead1();
+			if lookahead.peek(kw::custom_projection) {
+				let span = input
+					.parse::<kw::custom_projection>()
+					.expect("infallible")
+					.span;
+
+				let mut inner_args = None;
+
+				let input = {
+					let lookahead = input.lookahead1();
+					if lookahead.peek(Token![=]) {
+						input.parse::<Token![=]>().expect("infallible");
+						input
+					} else if lookahead.peek(Paren) {
+						let args;
+						let _paren = parenthesized!(args in input);
+						inner_args.insert(args)
+					} else {
+						return Err(lookahead.error());
+					}
+				};
+
+				Self::CustomProjection {
+					span,
+					unsafe_,
+					options: {
+						let mut options: Vec<TokenStream2> = vec![];
+						while input.peek(Token![#])
+							&& input.peek2(Token![!]) && input.peek3(Bracket)
+						{
+							input.parse::<Token![#]>().expect("contextually infallible");
+							input.parse::<Token![!]>().expect("contextually infallible");
+							let bracketed;
+							bracketed!(bracketed in input);
+							options.push(bracketed.parse().expect("infallible"))
+						}
+						options
+					}
+					.into_iter()
+					.map(parse2)
+					.collect::<Result<_>>()?,
+					projection: Rc::new(input.parse()?),
+				}
+			} else {
+				return Err(lookahead.error());
+			}
 		} else {
 			return Err(lookahead.error());
 		}
 		.pipe(Ok)
+	}
+}
+
+enum CustomProjectionOption {
+	DeallocateOwned { unsafe_: Token![unsafe], span: Span },
+}
+
+impl Parse for CustomProjectionOption {
+	fn parse(input: ParseStream) -> Result<Self> {
+		mod kw {
+			syn::custom_keyword!(deallocate_owned);
+		}
+
+		Ok(Self::DeallocateOwned {
+			unsafe_: input.parse()?,
+			span: input.parse::<kw::deallocate_owned>()?.span,
+		})
 	}
 }
 

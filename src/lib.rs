@@ -15,6 +15,10 @@
 //! Originally developed as part of [`rhizome`](https://crates.io/crates/rhizome) but now separate,
 //! this crate also works very well in combination with [`pinus`](https://crates.io/crates/pinus).
 //!
+//! # Safety Notes
+//!
+//! ***Note that [`Dyncast`] casts alone do not guarantee data pointer identity across any cast!***
+//!
 //! # WIP
 //!
 //! Due to diminishing returns,
@@ -208,6 +212,8 @@ use core::{
 	ptr::NonNull,
 };
 
+pub mod __;
+
 #[cfg(feature = "macros")]
 pub use fruit_salad_proc_macro_definitions::{implement_dyncasts, Dyncast};
 
@@ -237,6 +243,7 @@ impl<'a> dyn 'a + Dyncast {
 		self.__dyncast(
 			NonNull::new_unchecked(self as *const Self as *mut Self).cast(),
 			TypeId::of::<TStatic>(),
+			false,
 		)
 		.map(|pointer_data| {
 			#[allow(clippy::cast_ptr_alignment)] // Read unaligned.
@@ -255,7 +262,7 @@ impl<'a> dyn 'a + Dyncast {
 		&mut self,
 	) -> Option<&mut TActual> {
 		let this = NonNull::new_unchecked(self);
-		self.__dyncast(this.cast(), TypeId::of::<TStatic>())
+		self.__dyncast(this.cast(), TypeId::of::<TStatic>(), false)
 			.map(|pointer_data| {
 				pointer_data
 					.as_ptr()
@@ -277,6 +284,7 @@ impl<'a> dyn 'a + Dyncast {
 		self.__dyncast(
 			NonNull::new_unchecked(&*self as *const Self as *mut Self).cast(),
 			TypeId::of::<TStatic>(),
+			false,
 		)
 		.map(|pointer_data| {
 			pointer_data
@@ -297,7 +305,7 @@ impl<'a> dyn 'a + Dyncast {
 		mut self: Pin<&mut Self>,
 	) -> Option<Pin<&mut TActual>> {
 		let this = NonNull::new_unchecked(Pin::into_inner_unchecked(self.as_mut()) as *mut Self);
-		self.__dyncast(this.cast(), TypeId::of::<TStatic>())
+		self.__dyncast(this.cast(), TypeId::of::<TStatic>(), false)
 			.map(|pointer_data| {
 				pointer_data
 					.as_ptr()
@@ -319,7 +327,7 @@ impl<'a> dyn 'a + Dyncast {
 		this: NonNull<Self>,
 	) -> Option<NonNull<TActual>> {
 		this.as_ref()
-			.__dyncast(this.cast(), TypeId::of::<TStatic>())
+			.__dyncast(this.cast(), TypeId::of::<TStatic>(), false)
 			.map(|pointer_data| {
 				pointer_data
 					.as_ptr()
@@ -352,6 +360,7 @@ impl<'a> dyn 'a + Dyncast {
 			.__dyncast(
 				NonNull::new_unchecked(leaked).cast(),
 				TypeId::of::<TStatic>(),
+				true,
 			)
 			.map(|pointer_data| {
 				#[allow(clippy::cast_ptr_alignment)] // Read unaligned.
@@ -394,6 +403,7 @@ impl<'a> dyn 'a + Dyncast {
 			.__dyncast(
 				NonNull::new_unchecked(leaked).cast(),
 				TypeId::of::<TStatic>(),
+				true,
 			)
 			.map(|pointer_data| {
 				#[allow(clippy::cast_ptr_alignment)] // Read unaligned.
@@ -556,7 +566,26 @@ pub unsafe trait Dyncast {
 		&self,
 		this: NonNull<()>,
 		target: TypeId,
+		deallocate_owned: bool,
 	) -> Option<MaybeUninit<[u8; mem::size_of::<&dyn Dyncast>()]>>;
+}
+
+/// Indicates that data pointer identity is preserved through dynamic casts.
+///
+/// # Safety
+///
+/// Don't implement this manually.
+///
+/// Implementation is automatic when deriving [`Dyncast`] as long as the necessary requirements are in place.
+pub unsafe trait IdentityDyncast: Dyncast {
+	/// Views this instance as [`Dyncast`].
+	fn as_dyncast(&self) -> &dyn Dyncast;
+	/// Views this instance exclusively as [`Dyncast`].
+	fn as_dyncast_mut(&mut self) -> &mut dyn Dyncast;
+
+	/// Does a boxed conversion towards [`Dyncast`].
+	#[cfg(feature = "alloc")]
+	fn into_dyncast(self: ::alloc::boxed::Box<Self>) -> ::alloc::boxed::Box<dyn Dyncast>;
 }
 
 impl<'a> Debug for dyn 'a + Dyncast {
@@ -855,10 +884,4 @@ impl<'a> Hash for dyn 'a + DyncastOrd {
 	fn hash<H: Hasher>(&self, state: &mut H) {
 		self.as_dyncast().hash(state)
 	}
-}
-
-#[doc(hidden)]
-pub mod __ {
-	#[cfg(feature = "macros")]
-	pub use static_assertions::const_assert;
 }
