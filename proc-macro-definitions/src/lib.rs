@@ -176,7 +176,7 @@ macro_rules! tokens_eq {
 /// - The pointer could be shared, which means exclusive references are largely unavailable.
 /// - The resulting pointer could be mutated through, which means shared references are largely unavailable.
 /// - The projection could be used to convert an [`::alloc::boxed::Box`] (or ABI-compatible owning smart pointer),
-///   so calling [`::alloc::box::Box::from_raw`] (with the target type parameter and using the global allocator) must be valid on it.
+///   so calling [`::alloc::boxed::Box::from_raw`] (with the target type parameter and using the global allocator) must be valid on it.
 ///
 ///   The original boxed instance's destructor is not run.
 ///
