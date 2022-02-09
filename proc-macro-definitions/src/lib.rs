@@ -12,7 +12,7 @@ use proc_macro::TokenStream as TokenStream1;
 use proc_macro2::{Span, TokenStream as TokenStream2};
 use proc_macro_crate::{crate_name, FoundCrate};
 use quote::{quote, quote_spanned, ToTokens};
-use std::ops::Deref;
+use std::{mem, ops::Deref};
 use syn::{
 	parenthesized,
 	parse::{Parse, ParseStream},
@@ -138,6 +138,22 @@ macro_rules! tokens_eq {
 /// #[dyncast(#![runtime_pointer_size_assertion] unsafe T)]
 /// #[repr(transparent)]
 /// struct DyncastWrapper<T>(pub T);
+/// ```
+///
+/// ## Reinterpret and Unsize
+///
+/// You can reinterpret `self` once before unsizing it.
+/// This almost always requires `unsafe` but **usually not** `#![runtime_pointer_size_assertion]`:
+///
+/// ```
+/// use fruit_salad::Dyncast;
+///
+/// trait Trait {}
+///
+/// #[derive(Dyncast)]
+/// #[dyncast(unsafe T as dyn Trait)]
+/// #[repr(transparent)]
+/// struct DyncastWrapper<T: Trait>(pub T);
 /// ```
 ///
 /// # Example
@@ -272,6 +288,10 @@ fn implement_dyncast(
 
 			let runtime_pointer_size_assertion = dyncast_target.options.contains(&DyncastTargetOption::RuntimePointerSizeAssertion);
 
+			let detour = dyncast_target.detour.as_ref().map(|(detour_type, as_)| quote_spanned! {as_.span.resolved_at(Span::mixed_site())=>
+				*mut #detour_type #as_
+			});
+
 			let type_ = implement_dyncast_target(dyncast_target, &mut extra_impls, &mut require_self_downcast);
 
 			let mut assertion_type = type_.clone();
@@ -321,7 +341,7 @@ fn implement_dyncast(
 						.as_mut_ptr()
 						.cast::<::core::ptr::NonNull<#type_>>()
 						.write_unaligned(::core::ptr::NonNull::<#type_>::new_unchecked(
-							this.cast::<Self>().as_ptr() as *mut #type_
+							this.cast::<Self>().as_ptr() as #detour *mut #type_
 						)
 					);
 					result_memory
@@ -513,19 +533,44 @@ fn is_self_type(t: &Type) -> bool {
 struct DyncastTarget {
 	options: Vec<DyncastTargetOption>,
 	unsafe_: Option<Token![unsafe]>,
+	detour: Option<(Type, Token![as])>,
 	impl_: Option<Token![impl]>,
 	type_: Type,
 }
 impl Parse for DyncastTarget {
+	#[allow(clippy::similar_names)]
 	fn parse(input: ParseStream) -> Result<Self> {
+		let options = Attribute::parse_inner(input)?
+			.into_iter()
+			.map(|attribute| parse2(attribute.parse_meta()?.into_token_stream()))
+			.collect::<Result<_>>()?;
+		let unsafe_ = input.parse().expect("infallible");
+
+		let mut impl_ = input.parse().expect("infallible");
+		let mut type_ = input.parse()?;
+
+		let detour = if let Some(as_) = input.parse::<Option<Token![as]>>().expect("infallible") {
+			let mut impl2 = input.parse().expect("infallible");
+			let mut type2 = input.parse()?;
+
+			mem::swap(&mut impl_, &mut impl2);
+			mem::swap(&mut type_, &mut type2);
+
+			if let Some(impl2) = impl2 {
+				return Err(Error::new_spanned(impl2, "`impl` is not allowed here."));
+			}
+
+			Some((type2, as_))
+		} else {
+			None
+		};
+
 		Ok(Self {
-			options: Attribute::parse_inner(input)?
-				.into_iter()
-				.map(|attribute| parse2(attribute.parse_meta()?.into_token_stream()))
-				.collect::<Result<_>>()?,
-			unsafe_: input.parse().unwrap(),
-			impl_: input.parse().unwrap(),
-			type_: input.parse()?,
+			options,
+			unsafe_,
+			detour,
+			impl_,
+			type_,
 		})
 	}
 }
@@ -538,7 +583,9 @@ impl DyncastTarget {
 			Error::new_spanned(&self.type_, "This cast requires an `unsafe` prefix.")
 				.into_compile_error()
 		} else if self.unsafe_.is_some()
-			&& (matches!(&self.type_, Type::TraitObject(_)) || is_self_type(&self.type_))
+			&& (self.detour.is_none()
+				&& (matches!(&self.type_, Type::TraitObject(_)) || is_self_type(&self.type_))
+				|| self.detour.is_some() && is_self_type(&self.detour.as_ref().unwrap().0))
 		{
 			// Causes an "unnecessary unsafe block" style warning.
 			let unsafe_ = self.unsafe_.as_ref().unwrap();

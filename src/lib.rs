@@ -105,6 +105,19 @@
 //! # }
 //! ```
 //!
+//! ## Combined Reinterpretation and Unsizing
+//!
+//! ```
+//! use fruit_salad::Dyncast;
+//!
+//! trait Trait {}
+//!
+//! #[derive(Dyncast)]
+//! #[dyncast(unsafe T as dyn Trait)]
+//! #[repr(transparent)]
+//! struct DyncastWrapper<T: Trait>(pub T);
+//! ```
+//!
 //! # ☡ Potential Trip-ups
 //!
 //! While containing a safe API that covers many use-cases, this is still a *runtime* casting crate.
