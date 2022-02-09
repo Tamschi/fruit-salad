@@ -34,6 +34,7 @@ TODO: Date
 - Revisions:
   - Fixed issue where a bunch of code would be printed into the documentation instead of just the type.
   - Dyncast targets emitted into the documentation are now links.
+  - `Dyncast` is always fully qualified now when emitted from the derive macros.
 
 ## 0.0.2
 

@@ -327,16 +327,16 @@ fn implement_dyncast(
 			let pointer_size_assertion = if runtime_pointer_size_assertion {
 				// Generic type parameters of `Self` cannot be used in a static assertion.
 				quote_spanned! {type_.span().resolved_at(Span::mixed_site())=>
-					::core::assert!(::core::mem::size_of::<*mut #assertion_type>() <= ::core::mem::size_of::<&dyn Dyncast>());
+					::core::assert!(::core::mem::size_of::<*mut #assertion_type>() <= ::core::mem::size_of::<&dyn ::#fruit_salad::Dyncast>());
 				}
 			} else {
 				quote_spanned! {type_.span().resolved_at(Span::mixed_site())=>
-					::#fruit_salad::__::const_assert!(::core::mem::size_of::<*mut #assertion_type>() <= ::core::mem::size_of::<&dyn Dyncast>());
+					::#fruit_salad::__::const_assert!(::core::mem::size_of::<*mut #assertion_type>() <= ::core::mem::size_of::<&dyn ::#fruit_salad::Dyncast>());
 				}
 			};
 
 			let conversion = quote_spanned! {type_.span().resolved_at(Span::mixed_site())=>
-				let mut result_memory = ::core::mem::MaybeUninit::<[u8; ::core::mem::size_of::<&dyn Dyncast>()]>::uninit();
+				let mut result_memory = ::core::mem::MaybeUninit::<[u8; ::core::mem::size_of::<&dyn ::#fruit_salad::Dyncast>()]>::uninit();
 					result_memory
 						.as_mut_ptr()
 						.cast::<::core::ptr::NonNull<#type_>>()
