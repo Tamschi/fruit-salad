@@ -12,6 +12,19 @@ TODO: Date
   - Deriving a `Dyncast` implementation that targets `Self` with generics now requires `#![runtime_pointer_size_assertion] Self` instead of just `Self`.
     > This also potentially closes a memory safety issue on platforms where `usize` is larger than the vtable pointer, if Rust at some point gains the ability to have trait objects of unsized type instances.
 
+  - It's now possible to override the path of `fruit_salad` (which is now assumed to be `::fruit_salad` unless specified otherwise):
+
+     ```rust
+     #[derive(Dyncast)]
+     #[fruit_salad(::fruit_salad)]
+     #[dyncast(Self)]
+     struct Struct;
+     ```
+
+     ```rust
+     implement_dyncasts!(#![fruit_salad(::fruit_salad)] …);
+     ```
+
 - Features:
   - It's now possible to target arbitrary types using outer generics:
 

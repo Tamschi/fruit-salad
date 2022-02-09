@@ -7,10 +7,8 @@ extern crate proc_macro;
 
 use call2_for_syn::call2_strict;
 use debugless_unwrap::DebuglessUnwrap;
-use lazy_static::lazy_static;
 use proc_macro::TokenStream as TokenStream1;
 use proc_macro2::{Span, TokenStream as TokenStream2};
-use proc_macro_crate::{crate_name, FoundCrate};
 use quote::{quote, quote_spanned, ToTokens};
 use std::{mem, ops::Deref};
 use syn::{
@@ -20,8 +18,8 @@ use syn::{
 	punctuated::Punctuated,
 	spanned::Spanned,
 	visit_mut::{self, VisitMut},
-	Attribute, Error, Generics, Ident, Item, Lifetime, PredicateType, Result, Token, Type,
-	TypeParamBound, WhereClause, WherePredicate,
+	Attribute, Error, Generics, Ident, Item, Lifetime, Meta, MetaList, NestedMeta, Path,
+	PredicateType, Result, Token, Type, TypeParamBound, WhereClause, WherePredicate,
 };
 use tap::Pipe;
 use unquote::unquote;
@@ -38,6 +36,46 @@ macro_rules! tokens_eq {
 		.flatten()
 		.is_some())
 	};
+}
+
+fn update_crate_override(current: &mut Path, attribute: &Attribute) -> Result<()> {
+	if attribute.path.is_ident("fruit_salad") {
+		match attribute.parse_meta()? {
+			meta @ (Meta::Path(_) | Meta::NameValue(_)) => {
+				Err(Error::new_spanned(meta, "Expected `fruit_salad(path)`."))
+			}
+			#[allow(clippy::unit_arg)]
+			Meta::List(MetaList { nested, .. }) => {
+				let mut first = true;
+				for item in nested {
+					if !first {
+						return Err(Error::new_spanned(item, "Expected only one path."));
+					}
+					first = false;
+
+					match item {
+						NestedMeta::Lit(lit) => {
+							return Err(Error::new_spanned(lit, "Expected path."))
+						}
+						NestedMeta::Meta(meta) => match meta {
+							Meta::Path(path) => *current = path,
+							meta @ (Meta::List(_) | Meta::NameValue(_)) => {
+								return Err(Error::new_spanned(meta, "Expected path."))
+							}
+						},
+					}
+				}
+				Ok(())
+			}
+		}
+	} else {
+		let path = &attribute.path;
+		let tokens = &attribute.tokens;
+		Err(Error::new_spanned(
+			quote!(#path #tokens),
+			"Expected `fruit_salad(path)`.",
+		))
+	}
 }
 
 /// Implements `Dyncast` for an enum, struct, trait, trait alias, type alias or union.  
@@ -170,18 +208,41 @@ macro_rules! tokens_eq {
 /// #[dyncast(impl dyn PartialEq<dyn Dyncast>, impl dyn PartialOrd<dyn Dyncast>)]
 /// struct MyStruct;
 /// ```
-#[proc_macro_derive(Dyncast, attributes(dyncast, dyncast))]
+///
+/// # Crate-Path Override
+///
+/// You can specify the location of [`fruit_salad`](https://docs.rs/fruit-salad/latest/fruit_salad/) via
+///
+/// - `#[fruit_salad(::path::to::fruit::salad)]` when using the [`Dyncast`] derive macro and
+/// - `#![fruit_salad(::path::to::fruit::salad)]` when using the [`implement_dyncasts!`] item macro.
+#[proc_macro_derive(Dyncast, attributes(dyncast, fruit_salad))]
 pub fn dyncast_derive(input: TokenStream1) -> TokenStream1 {
-	let fruit_salad = fruit_salad_ident(Span::mixed_site());
 	let derive_target = parse_macro_input!(input as DeriveTarget);
-	implement_dyncast(&derive_target, &fruit_salad, true)
-		.unwrap_or_else(|error| error.to_compile_error())
-		.into()
+	let mut fruit_salad: Path = call2_strict(
+		quote_spanned!(Span::mixed_site()=> ::fruit_salad),
+		Path::parse,
+	)
+	.unwrap_or_else(|incomplete| Err(incomplete.syn_error))
+	.expect("::fruit_salad");
+
+	let mut output = TokenStream2::new();
+	for attribute in &derive_target.attributes {
+		if attribute.path.is_ident("fruit_salad") {
+			if let Err(error) = update_crate_override(&mut fruit_salad, attribute) {
+				output.extend(error.into_compile_error());
+			}
+		}
+	}
+	output.extend(
+		implement_dyncast(&derive_target, &fruit_salad, true)
+			.unwrap_or_else(|error| error.to_compile_error()),
+	);
+	output.into()
 }
 
 fn implement_dyncast(
 	impl_target: &ImplTarget,
-	fruit_salad: &Ident,
+	fruit_salad: &Path,
 	ignore_unrelated_attributes: bool,
 ) -> Result<TokenStream2> {
 	#![allow(clippy::items_after_statements)]
@@ -292,7 +353,7 @@ fn implement_dyncast(
 				*mut #detour_type #as_
 			});
 
-			let type_ = implement_dyncast_target(dyncast_target, &mut extra_impls, &mut require_self_downcast);
+			let type_ = implement_dyncast_target(fruit_salad, dyncast_target, &mut extra_impls, &mut require_self_downcast);
 
 			let mut assertion_type = type_.clone();
 			let mut contains_self = false;
@@ -327,16 +388,16 @@ fn implement_dyncast(
 			let pointer_size_assertion = if runtime_pointer_size_assertion {
 				// Generic type parameters of `Self` cannot be used in a static assertion.
 				quote_spanned! {type_.span().resolved_at(Span::mixed_site())=>
-					::core::assert!(::core::mem::size_of::<*mut #assertion_type>() <= ::core::mem::size_of::<&dyn ::#fruit_salad::Dyncast>());
+					::core::assert!(::core::mem::size_of::<*mut #assertion_type>() <= ::core::mem::size_of::<&dyn #fruit_salad::Dyncast>());
 				}
 			} else {
 				quote_spanned! {type_.span().resolved_at(Span::mixed_site())=>
-					::#fruit_salad::__::const_assert!(::core::mem::size_of::<*mut #assertion_type>() <= ::core::mem::size_of::<&dyn ::#fruit_salad::Dyncast>());
+					#fruit_salad::__::const_assert!(::core::mem::size_of::<*mut #assertion_type>() <= ::core::mem::size_of::<&dyn #fruit_salad::Dyncast>());
 				}
 			};
 
 			let conversion = quote_spanned! {type_.span().resolved_at(Span::mixed_site())=>
-				let mut result_memory = ::core::mem::MaybeUninit::<[u8; ::core::mem::size_of::<&dyn ::#fruit_salad::Dyncast>()]>::uninit();
+				let mut result_memory = ::core::mem::MaybeUninit::<[u8; ::core::mem::size_of::<&dyn #fruit_salad::Dyncast>()]>::uninit();
 					result_memory
 						.as_mut_ptr()
 						.cast::<::core::ptr::NonNull<#type_>>()
@@ -387,7 +448,7 @@ fn implement_dyncast(
 		/// # Targets
 		///
 		#(#[doc = concat!("- [`", stringify!(#target_types), "`]")])*
-		unsafe impl#impl_generics ::#fruit_salad::Dyncast for #dyn_ #ident#type_generics
+		unsafe impl#impl_generics #fruit_salad::Dyncast for #dyn_ #ident#type_generics
 			#where_clause
 		{
 			fn __dyncast(
@@ -396,7 +457,7 @@ fn implement_dyncast(
 				target: ::std::any::TypeId,
 			) -> ::core::option::Option<
 				::core::mem::MaybeUninit<
-					[::core::primitive::u8; ::core::mem::size_of::<&dyn ::#fruit_salad::Dyncast>()]
+					[::core::primitive::u8; ::core::mem::size_of::<&dyn #fruit_salad::Dyncast>()]
 				>
 			> {
 				#(#target_branches)* {
@@ -417,6 +478,7 @@ struct ExtraImplementation {
 }
 
 fn implement_dyncast_target(
+	fruit_salad: &Path,
 	dyncast_target: DyncastTarget,
 	extra_impls: &mut Vec<ExtraImplementation>,
 	require_self_downcast: &mut Vec<Span>,
@@ -429,14 +491,12 @@ fn implement_dyncast_target(
 
 	let type_ = dyncast_target.type_.to_token_stream();
 
-	let fruit_salad = fruit_salad_ident(Span::mixed_site());
-
 	if tokens_eq!(type_, dyn DynHash) {
 		// This is just a shorthand to avoid the import (as the trait is blanket-implemented),
 		// so there's nothing further done here.
 		call2_strict(
 			quote_spanned! {type_.span()=>
-				dyn ::#fruit_salad::DynHash
+				dyn #fruit_salad::DynHash
 			},
 			Type::parse,
 		)
@@ -447,14 +507,14 @@ fn implement_dyncast_target(
 			unsafe_: None,
 			what: call2_strict(
 				quote_spanned! {impl_.span=>
-					::core::cmp::PartialEq::<dyn ::#fruit_salad::Dyncast>
+					::core::cmp::PartialEq::<dyn #fruit_salad::Dyncast>
 				},
 				Type::parse,
 			)
 			.unwrap()
 			.unwrap(),
 			how: quote_spanned! {impl_.span=>
-				fn eq(&self, other: &(dyn 'static + ::#fruit_salad::Dyncast)) -> bool {
+				fn eq(&self, other: &(dyn 'static + #fruit_salad::Dyncast)) -> bool {
 					if let Some(other) = other.dyncast::<Self>() {
 						::core::cmp::PartialEq::<Self>::eq(self, other)
 					} else {
@@ -466,7 +526,7 @@ fn implement_dyncast_target(
 		require_self_downcast.push(impl_.span);
 		call2_strict(
 			quote_spanned! {type_.span()=>
-				dyn ::core::cmp::PartialEq::<dyn ::#fruit_salad::Dyncast>
+				dyn ::core::cmp::PartialEq::<dyn #fruit_salad::Dyncast>
 			},
 			Type::parse,
 		)
@@ -477,7 +537,7 @@ fn implement_dyncast_target(
 			unsafe_: None,
 			what: call2_strict(
 				quote_spanned! {impl_.span=>
-					::core::cmp::PartialOrd::<dyn ::#fruit_salad::Dyncast>
+					::core::cmp::PartialOrd::<dyn #fruit_salad::Dyncast>
 				},
 				Type::parse,
 			)
@@ -486,7 +546,7 @@ fn implement_dyncast_target(
 			how: quote_spanned! {impl_.span=>
 				fn partial_cmp(
 					&self,
-					other: &(dyn 'static + ::#fruit_salad::Dyncast)
+					other: &(dyn 'static + #fruit_salad::Dyncast)
 				) -> ::core::option::Option<::core::cmp::Ordering> {
 					if let Some(other) = other.dyncast::<Self>() {
 						::core::cmp::PartialOrd::<Self>::partial_cmp(self, other)
@@ -499,7 +559,7 @@ fn implement_dyncast_target(
 		require_self_downcast.push(impl_.span);
 		call2_strict(
 			quote_spanned! {type_.span()=>
-				dyn ::core::cmp::PartialOrd::<dyn ::#fruit_salad::Dyncast>
+				dyn ::core::cmp::PartialOrd::<dyn #fruit_salad::Dyncast>
 			},
 			Type::parse,
 		)
@@ -640,10 +700,10 @@ impl Parse for DyncastTargetOption {
 /// Add dyncast targets via `#[dyncast(…)]` attributes on each parameter, like with the [`Dyncast`] derive macro.
 #[proc_macro]
 pub fn implement_dyncasts(input: TokenStream1) -> TokenStream1 {
-	let fruit_salad = fruit_salad_ident(Span::mixed_site());
 	let mut output = TokenStream2::new();
-	for impl_target in parse_macro_input!(input as ImplTargets) {
-		output.extend(implement_dyncast(&impl_target, &fruit_salad, false));
+	let targets = parse_macro_input!(input as ImplTargets);
+	for impl_target in targets.targets {
+		output.extend(implement_dyncast(&impl_target, &targets.fruit_salad, false));
 	}
 	output.into()
 }
@@ -713,24 +773,40 @@ impl Parse for DeriveTarget {
 	}
 }
 
-struct ImplTargets(Vec<ImplTarget>);
+struct ImplTargets {
+	fruit_salad: Path,
+	targets: Vec<ImplTarget>,
+}
 impl IntoIterator for ImplTargets {
 	type Item = ImplTarget;
 
 	type IntoIter = <Vec<ImplTarget> as IntoIterator>::IntoIter;
 
 	fn into_iter(self) -> Self::IntoIter {
-		self.0.into_iter()
+		self.targets.into_iter()
 	}
 }
 
 impl Parse for ImplTargets {
 	fn parse(input: ParseStream) -> Result<Self> {
-		Punctuated::<ImplTarget, Token![,]>::parse_terminated(input)?
-			.into_iter()
-			.collect::<Vec<_>>()
-			.pipe(Self)
-			.pipe(Ok)
+		Self {
+			fruit_salad: {
+				let mut fruit_salad: Path = call2_strict(
+					quote_spanned!(Span::mixed_site()=> ::fruit_salad),
+					Path::parse,
+				)
+				.unwrap_or_else(|incomplete| Err(incomplete.syn_error))
+				.expect("::fruit_salad");
+				for attribute in Attribute::parse_inner(input)? {
+					update_crate_override(&mut fruit_salad, &attribute)?
+				}
+				fruit_salad
+			},
+			targets: Punctuated::<ImplTarget, Token![,]>::parse_terminated(input)?
+				.into_iter()
+				.collect::<Vec<_>>(),
+		}
+		.pipe(Ok)
 	}
 }
 
@@ -748,14 +824,4 @@ impl Parse for ImplTarget {
 			},
 		})
 	}
-}
-
-lazy_static! {
-	static ref FRUIT_SALAD_NAME: String = match crate_name("fruit-salad") {
-		Ok(FoundCrate::Name(name)) => name,
-		Ok(FoundCrate::Itself) | Err(_) => "fruit_salad".to_owned(),
-	};
-}
-fn fruit_salad_ident(span: Span) -> Ident {
-	Ident::new(&*FRUIT_SALAD_NAME, span.resolved_at(Span::mixed_site()))
 }
