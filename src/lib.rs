@@ -108,6 +108,8 @@
 //! ## Combined Reinterpretation and Unsizing
 //!
 //! ```
+//! # #[cfg(feature = "macros")]
+//! # {
 //! use fruit_salad::Dyncast;
 //!
 //! trait Trait {}
@@ -116,6 +118,7 @@
 //! #[dyncast(unsafe T as dyn Trait)]
 //! #[repr(transparent)]
 //! struct DyncastWrapper<T: Trait>(pub T);
+//! # }
 //! ```
 //!
 //! # ☡ Potential Trip-ups
